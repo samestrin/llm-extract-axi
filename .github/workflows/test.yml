@@ -1,0 +1,110 @@
+name: test
+
+# No paths filter: a pull request that registers zero checks reads as green.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -s -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt -s:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+        with:
+          # Pinned to the version named in .golangci.yml, so a local run and CI
+          # cannot disagree.
+          version: v2.12.2
+
+  test:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The end-to-end tests exec the binaries in ./build. They fail rather
+      # than skip when a binary is missing, so this step must come first.
+      - name: build the binaries for the end-to-end tests
+        run: make build
+
+      # Coverage is measured on the same run as the race detector, so the
+      # gated number comes from the suite that actually ran with ./build
+      # present. The LLM environment is stripped so a key on the runner cannot
+      # push a test down a path that the number then counts.
+      - name: test with race detector and coverage
+        run: |
+          env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_BASE_URL -u OPENAI_MODEL \
+            go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+
+      # A hard fail, not a warning.
+      - name: enforce 80% coverage
+        run: ./scripts/coverage-gate.sh coverage.txt 80
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-profile
+          path: coverage.txt
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [darwin/amd64, darwin/arm64, linux/amd64, linux/arm64, windows/amd64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: cross-compile
+        run: |
+          os=${{ matrix.platform }}; os=${os%/*}
+          arch=${{ matrix.platform }}; arch=${arch#*/}
+          ext=""; [ "$os" = "windows" ] && ext=".exe"
+          mkdir -p out
+          for dir in cmd/*/; do
+            name=$(basename "$dir")
+            GOOS=$os GOARCH=$arch go build -o "out/$name-$os-$arch$ext" "./$dir"
+          done
+
+      # The same cap as llm-data-axi. Nothing heavy belongs in this binary; one
+      # that crossed 20MB would mean an unwanted dependency had been pulled in.
+      - name: size gate (<20MB)
+        run: |
+          for f in out/*; do
+            size=$(stat -c%s "$f")
+            echo "$f: $size bytes"
+            if [ "$size" -gt 20971520 ]; then echo "::error::$f exceeds 20MB"; exit 1; fi
+          done
