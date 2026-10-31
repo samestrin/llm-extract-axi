@@ -1,0 +1,59 @@
+package commands
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+// Defends the exit-code contract: an unknown command must exit non-zero and
+// say why on stderr, never exit 0 with nothing printed.
+func TestRunUnknownCommandFails(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"no-such-command"}, &stdout, &stderr)
+	if code == 0 {
+		t.Fatalf("unknown command exited 0; stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no-such-command") {
+		t.Errorf("stderr does not name the bad command: %q", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("an error wrote to stdout: %q", stdout.String())
+	}
+}
+
+// Defends --version reading commands.Version, the variable the Makefile
+// stamps with -X. Stamping anything else leaves the binary reporting the
+// default.
+func TestRunVersionReportsVersionVariable(t *testing.T) {
+	old := Version
+	t.Cleanup(func() { Version = old })
+	Version = "v9.9.9-test"
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"--version"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("--version exited %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "v9.9.9-test") {
+		t.Errorf("--version did not print the stamped version: %q", stdout.String())
+	}
+}
+
+// Defends against a second in-process run inheriting the first run's
+// arguments: the root is a package singleton.
+func TestRunNoArgsPrintsHelp(t *testing.T) {
+	old := Version
+	t.Cleanup(func() { Version = old })
+	Version = "v9.9.9-test"
+
+	var stdout, stderr bytes.Buffer
+	run([]string{"--version"}, &stdout, &stderr)
+	stdout.Reset()
+	stderr.Reset()
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("no args exited %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), "v9.9.9") {
+		t.Errorf("no args did not print help: %q", stdout.String())
+	}
+}
