@@ -50,7 +50,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	RootCmd.SetOut(stdout)
 	RootCmd.SetErr(stderr)
 	if err := RootCmd.Execute(); err != nil {
-		fmt.Fprintf(stderr, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
 	return 0
