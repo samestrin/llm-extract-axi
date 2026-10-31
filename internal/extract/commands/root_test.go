@@ -2,8 +2,12 @@ package commands
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -97,5 +101,35 @@ func TestResetFlagsRestoresDefaults(t *testing.T) {
 		if f.Changed {
 			t.Errorf("flag %s still marked Changed", f.Name)
 		}
+	}
+}
+
+// Defends --axi on the root reaching the lifted commands, and not leaking into
+// the next in-process run. In llm-data the flag was published only when true,
+// so a run with --axi followed by one with --json emitted TOON for both.
+func TestRunAXIFlagReachesCommandsAndResets(t *testing.T) {
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><a href="/docs">Documentation</a></body></html>`))
+	}))
+	defer page.Close()
+	t.Cleanup(func() { output.SetDefaultAXI(false) })
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"extract-links", "--url", page.URL, "--json", "--axi"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("--axi run exited %d; stderr=%q", code, stderr.String())
+	}
+	axi := strings.TrimSpace(stdout.String())
+	if strings.HasPrefix(axi, "{") || !strings.Contains(axi, "/docs") {
+		t.Errorf("--axi did not produce TOON carrying the link:\n%s", axi)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"extract-links", "--url", page.URL, "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("--json run exited %d; stderr=%q", code, stderr.String())
+	}
+	if js := strings.TrimSpace(stdout.String()); !strings.HasPrefix(js, "{") {
+		t.Errorf("the previous run's --axi leaked into this one; not JSON:\n%s", js)
 	}
 }

@@ -11,7 +11,7 @@ A CLI built to the [AXI](https://axi.md) principles. It turns outside content in
 
 ## Status
 
-This is the project skeleton. The binary builds and reports its version; the `fetch`, `extract-relevant` and `extract-links` commands are not here yet.
+`extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is not here yet.
 
 ## Build
 
