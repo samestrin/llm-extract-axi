@@ -143,7 +143,7 @@ func TestProcessStringsSendsEachPromptToTheClient(t *testing.T) {
 		seen = append(seen, body)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"choices":[{"message":{"content":%q}}]}`, "reply to "+body)
+		_, _ = fmt.Fprintf(w, `{"choices":[{"message":{"content":%q}}]}`, "reply to "+body)
 	}))
 	defer srv.Close()
 
@@ -180,11 +180,11 @@ func TestProcessStringsSurfacesAPerPromptError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if decodeRequestPrompt(r) == "bad" {
 			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprint(w, `{"error":{"message":"nope"}}`)
+			_, _ = fmt.Fprint(w, `{"error":{"message":"nope"}}`)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"choices":[{"message":{"content":"fine"}}]}`)
+		_, _ = fmt.Fprint(w, `{"choices":[{"message":{"content":"fine"}}]}`)
 	}))
 	defer srv.Close()
 

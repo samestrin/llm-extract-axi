@@ -345,7 +345,7 @@ func TestExtractLinksCommand_JSONOutput(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<!DOCTYPE html>
+		_, _ = w.Write([]byte(`<!DOCTYPE html>
 <html>
 <body>
 <h1>Test</h1>
@@ -385,7 +385,7 @@ func TestExtractLinksCommand_JSONOutput(t *testing.T) {
 func TestExtractLinksCommand_MinimalOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<!DOCTYPE html>
+		_, _ = w.Write([]byte(`<!DOCTYPE html>
 <html>
 <body>
 <a href="/test">Test Link</a>
@@ -606,7 +606,7 @@ func TestLinkInfoJSON(t *testing.T) {
 func TestExtractLinksCommand_TextOutput(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<!DOCTYPE html>
+		_, _ = w.Write([]byte(`<!DOCTYPE html>
 <html>
 <body>
 <h1>Test Page</h1>
@@ -645,7 +645,7 @@ func TestExtractLinksCommand_TextOutput(t *testing.T) {
 func TestExtractLinksCommand_TextOutputNoSection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<!DOCTYPE html>
+		_, _ = w.Write([]byte(`<!DOCTYPE html>
 <html>
 <body>
 <p><a href="/simple">Simple Link</a></p>

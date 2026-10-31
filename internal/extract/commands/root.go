@@ -9,6 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
 
 // Version is stamped at build time by the Makefile with
@@ -16,6 +18,11 @@ import (
 // It lives here rather than on main because the cobra root reads it, so
 // stamping main would leave `llm-extract --version` reporting this default.
 var Version = "dev"
+
+// GlobalAXIOutput selects TOON output. It reaches every command through
+// output.SetDefaultAXI rather than a per-command flag, because each command
+// builds its own formatter with output.New(json, min, w).
+var GlobalAXIOutput bool
 
 // RootCmd is the base command when called without any subcommands.
 var RootCmd = &cobra.Command{
@@ -29,9 +36,18 @@ when it has to, and says so.`,
 	Args:          cobra.NoArgs,
 	SilenceErrors: true,
 	SilenceUsage:  true,
+	// Published unconditionally, including when the flag is false: assigning
+	// only true would leave the previous in-process run's setting in place.
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		output.SetDefaultAXI(GlobalAXIOutput)
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
+}
+
+func init() {
+	RootCmd.PersistentFlags().BoolVar(&GlobalAXIOutput, "axi", false, "Output as TOON (AXI token-dense format)")
 }
 
 // Execute runs the root command against the process arguments and exits.

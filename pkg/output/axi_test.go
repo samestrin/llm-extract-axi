@@ -119,7 +119,7 @@ func TestAXIStripsAControlByte(t *testing.T) {
 	buf := new(bytes.Buffer)
 	f := New(false, false, buf)
 	f.AXI = true
-	r := axiResult{Count: 1, Rows: []axiRow{{File: "a.go", Line: 1, Match: "[31mred[0m"}}}
+	r := axiResult{Count: 1, Rows: []axiRow{{File: "a.go", Line: 1, Match: "\x1b[31mred\x1b[0m"}}}
 	if err := f.Print(r, nil); err != nil {
 		t.Fatalf("Print: %v", err)
 	}

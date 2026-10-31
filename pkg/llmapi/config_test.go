@@ -11,15 +11,15 @@ func TestGetAPIConfig_EnvVars(t *testing.T) {
 	origURL := os.Getenv("OPENAI_BASE_URL")
 	origModel := os.Getenv("OPENAI_MODEL")
 	defer func() {
-		os.Setenv("OPENAI_API_KEY", origKey)
-		os.Setenv("OPENAI_BASE_URL", origURL)
-		os.Setenv("OPENAI_MODEL", origModel)
+		_ = os.Setenv("OPENAI_API_KEY", origKey)
+		_ = os.Setenv("OPENAI_BASE_URL", origURL)
+		_ = os.Setenv("OPENAI_MODEL", origModel)
 	}()
 
 	// Set test env vars
-	os.Setenv("OPENAI_API_KEY", "test-api-key")
-	os.Setenv("OPENAI_BASE_URL", "https://test.api.com/v1")
-	os.Setenv("OPENAI_MODEL", "test-model")
+	_ = os.Setenv("OPENAI_API_KEY", "test-api-key")
+	_ = os.Setenv("OPENAI_BASE_URL", "https://test.api.com/v1")
+	_ = os.Setenv("OPENAI_MODEL", "test-model")
 
 	config := GetAPIConfig()
 
@@ -40,14 +40,14 @@ func TestGetAPIConfig_Defaults(t *testing.T) {
 	origURL := os.Getenv("OPENAI_BASE_URL")
 	origModel := os.Getenv("OPENAI_MODEL")
 	defer func() {
-		os.Setenv("OPENAI_API_KEY", origKey)
-		os.Setenv("OPENAI_BASE_URL", origURL)
-		os.Setenv("OPENAI_MODEL", origModel)
+		_ = os.Setenv("OPENAI_API_KEY", origKey)
+		_ = os.Setenv("OPENAI_BASE_URL", origURL)
+		_ = os.Setenv("OPENAI_MODEL", origModel)
 	}()
 
-	os.Unsetenv("OPENAI_API_KEY")
-	os.Unsetenv("OPENAI_BASE_URL")
-	os.Unsetenv("OPENAI_MODEL")
+	_ = os.Unsetenv("OPENAI_API_KEY")
+	_ = os.Unsetenv("OPENAI_BASE_URL")
+	_ = os.Unsetenv("OPENAI_MODEL")
 
 	config := GetAPIConfig()
 
@@ -91,13 +91,13 @@ func TestGetAPIConfig_AnthropicEnvVars(t *testing.T) {
 	origKey := os.Getenv("OPENAI_API_KEY")
 	origAnthropicKey := os.Getenv("ANTHROPIC_API_KEY")
 	defer func() {
-		os.Setenv("OPENAI_API_KEY", origKey)
-		os.Setenv("ANTHROPIC_API_KEY", origAnthropicKey)
+		_ = os.Setenv("OPENAI_API_KEY", origKey)
+		_ = os.Setenv("ANTHROPIC_API_KEY", origAnthropicKey)
 	}()
 
 	// Clear OpenAI key, set Anthropic key
-	os.Unsetenv("OPENAI_API_KEY")
-	os.Setenv("ANTHROPIC_API_KEY", "anthropic-test-key")
+	_ = os.Unsetenv("OPENAI_API_KEY")
+	_ = os.Setenv("ANTHROPIC_API_KEY", "anthropic-test-key")
 
 	config := GetAPIConfig()
 

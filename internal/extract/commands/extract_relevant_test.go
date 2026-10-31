@@ -25,8 +25,8 @@ func TestExtractRelevantMissingContext(t *testing.T) {
 
 func TestExtractRelevantFileNotFound(t *testing.T) {
 	// Temporarily set a fake API key for this test
-	os.Setenv("OPENAI_API_KEY", "test-key-for-testing")
-	defer os.Unsetenv("OPENAI_API_KEY")
+	_ = os.Setenv("OPENAI_API_KEY", "test-key-for-testing")
+	defer func() { _ = os.Unsetenv("OPENAI_API_KEY") }()
 
 	cmd := newExtractRelevantCmd()
 	buf := new(bytes.Buffer)
@@ -45,12 +45,12 @@ func TestExtractRelevantFileNotFound(t *testing.T) {
 
 func TestExtractRelevantNoAPIKey(t *testing.T) {
 	// Ensure no API key is set
-	os.Unsetenv("OPENAI_API_KEY")
-	os.Unsetenv("ANTHROPIC_API_KEY")
+	_ = os.Unsetenv("OPENAI_API_KEY")
+	_ = os.Unsetenv("ANTHROPIC_API_KEY")
 
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.md")
-	os.WriteFile(testFile, []byte("# Test Content\n\nSome text here."), 0644)
+	_ = os.WriteFile(testFile, []byte("# Test Content\n\nSome text here."), 0644)
 
 	cmd := newExtractRelevantCmd()
 	buf := new(bytes.Buffer)

@@ -40,7 +40,7 @@ func TestFormatter_Print_DefaultText(t *testing.T) {
 
 	data := TestOutput{Name: "test", Count: 5}
 	textFunc := func(w io.Writer, d interface{}) {
-		w.Write([]byte("TEXT OUTPUT"))
+		_, _ = w.Write([]byte("TEXT OUTPUT"))
 	}
 
 	err := f.Print(data, textFunc)

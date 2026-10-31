@@ -28,7 +28,7 @@ func TestLLMClient_Complete_Success(t *testing.T) {
 		// Verify request body
 		body, _ := io.ReadAll(r.Body)
 		var req ChatRequest
-		json.Unmarshal(body, &req)
+		_ = json.Unmarshal(body, &req)
 		if req.Model != "test-model" {
 			t.Errorf("expected model 'test-model', got %s", req.Model)
 		}
@@ -44,7 +44,7 @@ func TestLLMClient_Complete_Success(t *testing.T) {
 				},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -63,7 +63,7 @@ func TestLLMClient_Complete_APIError(t *testing.T) {
 	// Create mock server that returns error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{
 				"message": "Invalid API key",
 			},
@@ -83,7 +83,7 @@ func TestLLMClient_Complete_Timeout(t *testing.T) {
 	// Create slow mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
-		json.NewEncoder(w).Encode(ChatResponse{})
+		_ = json.NewEncoder(w).Encode(ChatResponse{})
 	}))
 	defer server.Close()
 
@@ -98,7 +98,7 @@ func TestLLMClient_Complete_Timeout(t *testing.T) {
 func TestLLMClient_Complete_InvalidJSON(t *testing.T) {
 	// Create mock server that returns invalid JSON
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer server.Close()
 
@@ -114,7 +114,7 @@ func TestLLMClient_Complete_EmptyResponse(t *testing.T) {
 	// Create mock server that returns empty choices
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := ChatResponse{Choices: []Choice{}}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -151,7 +151,7 @@ func TestLLMClient_Timeout_NotRetried(t *testing.T) {
 		callCount++
 		mu.Unlock()
 		time.Sleep(300 * time.Millisecond) // hang past the per-attempt timeout
-		json.NewEncoder(w).Encode(ChatResponse{Choices: []Choice{{Message: Message{Content: "late"}}}})
+		_ = json.NewEncoder(w).Encode(ChatResponse{Choices: []Choice{{Message: Message{Content: "late"}}}})
 	}))
 	defer server.Close()
 
@@ -191,10 +191,10 @@ func TestLLMClient_TransientNetworkError_StillRetried(t *testing.T) {
 				t.Fatal("server does not support hijacking")
 			}
 			conn, _, _ := hj.Hijack()
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
-		json.NewEncoder(w).Encode(ChatResponse{Choices: []Choice{{Message: Message{Content: "recovered"}}}})
+		_ = json.NewEncoder(w).Encode(ChatResponse{Choices: []Choice{{Message: Message{Content: "recovered"}}}})
 	}))
 	defer server.Close()
 

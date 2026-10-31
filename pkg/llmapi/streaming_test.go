@@ -38,17 +38,17 @@ func TestLLMClient_Stream_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		var req ChatRequest
-		json.Unmarshal(body, &req)
+		_ = json.Unmarshal(body, &req)
 		if !req.Stream {
 			t.Error("expected stream: true in request body")
 		}
 
 		flusher := sseHandler(t, w)
 		for _, part := range []string{"Hello", ", ", "world"} {
-			fmt.Fprint(w, sseChunkBody(part))
+			_, _ = fmt.Fprint(w, sseChunkBody(part))
 			flusher.Flush()
 		}
-		fmt.Fprint(w, "data: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
 	defer server.Close()
@@ -72,11 +72,11 @@ func TestLLMClient_Stream_MultiLineDataEventIsConcatenated(t *testing.T) {
 	// why nothing caught it.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher := sseHandler(t, w)
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":\n")
-		fmt.Fprint(w, "data: {\"content\":\"split\"}}]}\n")
-		fmt.Fprint(w, "\n")
+		_, _ = fmt.Fprint(w, "data: {\"choices\":[{\"delta\":\n")
+		_, _ = fmt.Fprint(w, "data: {\"content\":\"split\"}}]}\n")
+		_, _ = fmt.Fprint(w, "\n")
 		flusher.Flush()
-		fmt.Fprint(w, "data: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
 	defer server.Close()
@@ -101,10 +101,10 @@ func TestLLMClient_Stream_TotalLongerThanIdleWindow(t *testing.T) {
 		flusher := sseHandler(t, w)
 		for i := 0; i < 10; i++ {
 			time.Sleep(60 * time.Millisecond)
-			fmt.Fprint(w, sseChunkBody("x"))
+			_, _ = fmt.Fprint(w, sseChunkBody("x"))
 			flusher.Flush()
 		}
-		fmt.Fprint(w, "data: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
 	defer server.Close()
@@ -152,7 +152,7 @@ func TestLLMClient_Stream_IdleTimeout_KillsStalledStream(t *testing.T) {
 		callCount++
 		mu.Unlock()
 		flusher := sseHandler(t, w)
-		fmt.Fprint(w, sseChunkBody("partial"))
+		_, _ = fmt.Fprint(w, sseChunkBody("partial"))
 		flusher.Flush()
 		<-done // stall forever
 	}))
@@ -187,7 +187,7 @@ func TestLLMClient_Stream_PlainJSONFallback(t *testing.T) {
 	// Some OpenAI-compatible gateways ignore stream:true and return a plain
 	// JSON completion; the client must still extract the content.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ChatResponse{
+		_ = json.NewEncoder(w).Encode(ChatResponse{
 			Choices: []Choice{{Message: Message{Content: "non-streamed answer"}}},
 		})
 	}))
@@ -212,7 +212,7 @@ func TestLLMClient_Stream_APIError_NonRetryable(t *testing.T) {
 		callCount++
 		mu.Unlock()
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error": map[string]string{"message": "Invalid API key"},
 		})
 	}))
@@ -250,8 +250,8 @@ func TestLLMClient_Stream_RetryableStatusBeforeContent(t *testing.T) {
 			return
 		}
 		flusher := sseHandler(t, w)
-		fmt.Fprint(w, sseChunkBody("recovered"))
-		fmt.Fprint(w, "data: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, sseChunkBody("recovered"))
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
 	defer server.Close()
@@ -278,7 +278,7 @@ func TestLLMClient_Stream_RetryableStatusBeforeContent(t *testing.T) {
 func TestLLMClient_Stream_DoneWithoutContent_Errors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher := sseHandler(t, w)
-		fmt.Fprint(w, "data: [DONE]\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
 	defer server.Close()
@@ -310,7 +310,7 @@ func TestLLMClient_Stream_JSONFallback_SlowBodyIsLive(t *testing.T) {
 			if end > len(payload) {
 				end = len(payload)
 			}
-			w.Write(payload[i:end])
+			_, _ = w.Write(payload[i:end])
 			flusher.Flush()
 			time.Sleep(50 * time.Millisecond)
 		}

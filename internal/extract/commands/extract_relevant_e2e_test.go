@@ -276,7 +276,7 @@ func TestExtractRelevantFetchesAURL(t *testing.T) {
 		// chrome-stripping Remove() deleted. Measured: with the junk as bare
 		// text, sabotaging that line left this test green.
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<html><head><title>Docs</title></head><body>`+
+		_, _ = fmt.Fprint(w, `<html><head><title>Docs</title></head><body>`+
 			`<nav><p>skip me</p></nav>`+
 			`<p>install with brew</p>`+
 			`<footer><p>copyright junk</p></footer>`+
@@ -322,7 +322,7 @@ func TestExtractRelevantFetchesAURL(t *testing.T) {
 func TestExtractRelevantReadsANonHTMLURLVerbatim(t *testing.T) {
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"openapi":"3.0.0"}`)
+		_, _ = fmt.Fprint(w, `{"openapi":"3.0.0"}`)
 	}))
 	defer page.Close()
 
