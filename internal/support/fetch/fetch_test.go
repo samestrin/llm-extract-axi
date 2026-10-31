@@ -222,3 +222,33 @@ func TestNewNilConfig(t *testing.T) {
 		t.Fatal("zero timeout not defaulted")
 	}
 }
+
+// Defends against a nil Result: a negative MaxRetries must still make one
+// attempt, not skip the loop and return nothing.
+func TestFetchNegativeRetriesStillAttempts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: -1, UserAgent: "t"}).Fetch(srv.URL)
+	if res == nil || res.Err != nil || string(res.Body) != "ok" {
+		t.Fatalf("bad result: %+v", res)
+	}
+}
+
+// Defends "never report success when it did not": a body cut short mid-read
+// is an error with no body, even though the status was 200.
+func TestFetchTruncatedBodyIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("short"))
+	}))
+	defer srv.Close()
+	res := newTestFetcher().Fetch(srv.URL)
+	if res.Err == nil || !strings.Contains(res.Err.Error(), "read body") {
+		t.Fatalf("truncated body not an error: %+v", res)
+	}
+	if res.Body != nil || res.Bytes != 0 || res.Status != 200 {
+		t.Errorf("failed result carries data: %+v", res)
+	}
+}

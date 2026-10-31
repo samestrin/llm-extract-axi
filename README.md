@@ -11,7 +11,15 @@ A CLI built to the [AXI](https://axi.md) principles. It turns outside content in
 
 ## Status
 
-This is the project skeleton. The binary builds and reports its version; the `fetch`, `extract-relevant` and `extract-links` commands are not here yet.
+`fetch` is here (direct tier only); `extract-relevant` and `extract-links` are not yet.
+
+```bash
+llm-extract fetch https://example.com                   # body to stdout
+llm-extract fetch https://example.com --output page.html
+llm-extract fetch https://example.com --json
+```
+
+A failed fetch, a non-2xx status, or a page that needs a browser (a challenge page) exits non-zero with the reason on stderr, never an empty result. There is no proxy or FlareSolverr tier, and `--format` accepts `raw` only; `text` and `markdown` are rejected.
 
 ## Build
 

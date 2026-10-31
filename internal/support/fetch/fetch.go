@@ -124,13 +124,16 @@ func (f *Fetcher) timeout() time.Duration {
 // is not a 2xx page carries a non-nil Err.
 func (f *Fetcher) Fetch(rawURL string) *Result {
 	client := &http.Client{Timeout: f.timeout()}
+	// A negative MaxRetries still makes one attempt; without the clamp the loop
+	// would never run and Fetch would return a nil Result.
+	retries := max(f.cfg.MaxRetries, 0)
 	var res *Result
-	for attempt := 0; attempt <= f.cfg.MaxRetries; attempt++ {
+	for attempt := 0; attempt <= retries; attempt++ {
 		res = f.once(client, rawURL)
 		if res.Err == nil || errors.Is(res.Err, ErrChallenge) || (res.Status > 0 && res.Status < 500) {
 			return res
 		}
-		if attempt < f.cfg.MaxRetries {
+		if attempt < retries {
 			f.sleep(attempt)
 		}
 	}

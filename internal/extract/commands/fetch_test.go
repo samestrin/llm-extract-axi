@@ -155,3 +155,13 @@ func TestFetchCmdFlagsApply(t *testing.T) {
 		t.Errorf("code=%d ua=%q err=%q", code, ua, errOut)
 	}
 }
+
+// Defends against a crash on a legal flag value: --retries -1 must not panic
+// and must still fetch.
+func TestFetchCmdNegativeRetries(t *testing.T) {
+	srv := pageServer(t, 200, "ok")
+	code, out, errOut := runFetchCmd(t, srv.URL, "--retries", "-1")
+	if code != 0 || out != "ok" {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	}
+}
