@@ -1,0 +1,23 @@
+# Build output
+/build/
+/dist/
+*.exe
+
+# Test / coverage
+*.out
+coverage.txt
+coverage.html
+
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+
+# Agent and orchestration workspaces. Never committed.
+.atcr/
+.claude/
+.paperclip/
+
+.planning/
