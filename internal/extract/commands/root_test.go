@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Defends the exit-code contract: an unknown command must exit non-zero and
@@ -55,5 +58,44 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), "v9.9.9") {
 		t.Errorf("no args did not print help: %q", stdout.String())
+	}
+}
+
+// Defends resetFlags against the pflag slice trap: Set on a slice that has
+// already been set appends, so a naive reset would leave the first run's
+// values in place and add the default to them.
+func TestResetFlagsRestoresDefaults(t *testing.T) {
+	c := &cobra.Command{Use: "x"}
+	sub := &cobra.Command{Use: "sub"}
+	c.AddCommand(sub)
+	s := c.Flags().String("name", "def", "")
+	sl := sub.Flags().StringSlice("tags", []string{"a", "b"}, "")
+	empty := c.PersistentFlags().StringSlice("none", nil, "")
+
+	if err := c.Flags().Set("name", "changed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sub.Flags().Set("tags", "x,y"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PersistentFlags().Set("none", "z"); err != nil {
+		t.Fatal(err)
+	}
+
+	resetFlags(c)
+
+	if *s != "def" {
+		t.Errorf("string flag = %q, want def", *s)
+	}
+	if got := strings.Join(*sl, ","); got != "a,b" {
+		t.Errorf("slice flag = %q, want a,b", got)
+	}
+	if len(*empty) != 0 {
+		t.Errorf("empty slice flag = %v, want empty", *empty)
+	}
+	for _, f := range []*pflag.Flag{c.Flags().Lookup("name"), sub.Flags().Lookup("tags"), c.PersistentFlags().Lookup("none")} {
+		if f.Changed {
+			t.Errorf("flag %s still marked Changed", f.Name)
+		}
 	}
 }
