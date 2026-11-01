@@ -81,8 +81,9 @@ API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
 		Args: cobra.NoArgs,
-		// A failed fetch or model call is not a usage mistake, and usage text
-		// after the JSON would make stdout unparseable.
+		// The root already silences usage for the binary; this covers the
+		// command run on its own, as the tests do, where a runtime failure
+		// would otherwise print usage after the JSON.
 		SilenceUsage: true,
 		RunE:         runExtractRelevant,
 	}
