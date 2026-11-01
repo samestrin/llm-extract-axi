@@ -28,6 +28,10 @@ var (
 	extractRelevantPath        string
 )
 
+// newLLMClient builds the model client for both commands. It is a variable so
+// a test can drop the retry backoff, which costs 14s against a fake 500.
+var newLLMClient = llmapi.NewLLMClientFromConfig
+
 // ExtractRelevantResult holds the extraction result
 type ExtractRelevantResult struct {
 	Path            string   `json:"path,omitempty"`
@@ -108,7 +112,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create LLM client
-	client := llmapi.NewLLMClientFromConfig(config)
+	client := newLLMClient(config)
 
 	result := ExtractRelevantResult{
 		Context: extractRelevantContext,

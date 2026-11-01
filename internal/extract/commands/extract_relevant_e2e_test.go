@@ -357,8 +357,8 @@ func TestExtractRelevantSurfacesAnHTTPError(t *testing.T) {
 	pointExtractRelevantAt(t, srv)
 
 	out, err := runExtractRelevantCmd(t, "--path", page.URL, "--context", "anything", "--json")
-	if err != nil {
-		t.Fatalf("extract-relevant: %v", err)
+	if err == nil {
+		t.Error("a 404 returned no error, so the process would exit 0")
 	}
 	got := decodeExtractResult(t, out)
 	if got.Error == "" {

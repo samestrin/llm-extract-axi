@@ -81,3 +81,81 @@ func TestCLIFetchChallengeExitsNonZero(t *testing.T) {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
+
+// llmEnv returns the process environment with every model setting replaced,
+// so an exported key on the machine running the tests cannot change the path.
+func llmEnv(extra ...string) []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL":
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, extra...)
+}
+
+// Defends the exit code of `extract-links` across the process boundary: a 404
+// page must exit non-zero from the real binary, with the reason on stderr.
+func TestCLIExtractLinksFetchErrorExitsNonZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	cmd := exec.Command(binary(t, "llm-extract"), "extract-links", "--url", srv.URL, "--json")
+	cmd.Env = llmEnv()
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("a 404 exited 0; stdout=%q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "404") || !strings.Contains(stderr.String(), "404") {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// Defends the partial result across the process boundary: when --context
+// ranking fails, the heuristic links are still printed and the exit is
+// non-zero.
+func TestCLIExtractLinksRankingFailureExitsNonZeroAndKeepsLinks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><h1><a href="/start">Start</a></h1></body></html>`))
+	}))
+	defer srv.Close()
+	cmd := exec.Command(binary(t, "llm-extract"), "extract-links", "--url", srv.URL, "--context", "start", "--json")
+	cmd.Env = llmEnv()
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("ranking with no API key exited 0; stdout=%q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "/start") || !strings.Contains(stderr.String(), "LLM ranking failed") {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// Defends the exit code of `extract-relevant` across the process boundary: a
+// failed model call must exit non-zero from the real binary. The fake answers
+// 401, which the client does not retry, to keep the test fast.
+func TestCLIExtractRelevantModelErrorExitsNonZero(t *testing.T) {
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key"}}`))
+	}))
+	defer llm.Close()
+	src := filepath.Join(t.TempDir(), "doc.md")
+	if err := os.WriteFile(src, []byte("body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(binary(t, "llm-extract"), "extract-relevant", "--path", src, "--context", "x")
+	cmd.Env = llmEnv("OPENAI_API_KEY=sk-test", "OPENAI_BASE_URL="+llm.URL, "OPENAI_MODEL=fake")
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("a model 401 exited 0; stdout=%q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "ERROR:") || !strings.Contains(stderr.String(), "401") {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}

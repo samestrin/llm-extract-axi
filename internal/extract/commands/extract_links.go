@@ -391,7 +391,7 @@ func rankLinksWithLLM(links []LinkInfo, context string, timeout int) ([]LinkInfo
 	}
 
 	// Create LLM client
-	client := llmapi.NewLLMClientFromConfig(config)
+	client := newLLMClient(config)
 
 	// Prepare links for LLM input (limit to avoid token limits)
 	maxLinks := 100

@@ -435,10 +435,10 @@ func TestExtractLinksCommand_HTTPError(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"--url", server.URL, "--json"})
 
-	err := cmd.Execute()
-	// Command should not error, but result should contain error
-	if err != nil {
-		t.Fatalf("command should not fail, error should be in result: %v", err)
+	// The output carries the error and the command still fails: a 404 is not
+	// a success (EST-3861).
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("a 404 returned no error, so the process would exit 0")
 	}
 
 	var result ExtractLinksResult
@@ -678,9 +678,10 @@ func TestExtractLinksCommand_TextOutputError(t *testing.T) {
 	cmd.SetOut(buf)
 	cmd.SetArgs([]string{"--url", "http://localhost:99999/unreachable"})
 
-	err := cmd.Execute()
-	if err != nil {
-		t.Fatalf("command should not fail, error should be in output: %v", err)
+	// The text output carries the error and the command still fails: an
+	// unreachable URL is not a success (EST-3861).
+	if err := cmd.Execute(); err == nil {
+		t.Fatal("an unreachable URL returned no error, so the process would exit 0")
 	}
 
 	output := buf.String()
