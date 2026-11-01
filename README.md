@@ -13,6 +13,26 @@ A CLI built to the [AXI](https://axi.md) principles. It turns outside content in
 
 `extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is ported from `llm-tools`, direct tier only.
 
+## Which commands reach outside
+
+This is the one tool in the family that may go to the network or spend money on a model, and it says which:
+
+| Command | Network | Model |
+| --- | --- | --- |
+| `fetch` | Always — fetches the URL | Never |
+| `extract-links` | Always — fetches the URL | Only with `--context` (LLM link ranking) |
+| `extract-relevant` | Only when `--path` is a URL | Always — `--context` is required |
+
+A command that needs a model fails with an error when no API key is set; it never silently degrades to a heuristic result. When `extract-links --context` LLM ranking fails, the command says so and returns the heuristic links marked as partial — never an empty success.
+
+### Setting keys
+
+The model client is configured entirely through environment variables:
+
+- `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` — the API key (required for model use)
+- `OPENAI_BASE_URL` — custom endpoint (default `https://api.openai.com/v1`)
+- `OPENAI_MODEL` — model selection (default `gpt-4o-mini`)
+
 ```bash
 llm-extract fetch https://example.com                   # body to stdout
 llm-extract fetch https://example.com --output page.html
