@@ -534,14 +534,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			_ = formatter.Print(finalResult, nil)
 			outputContent = buf.String()
 		} else {
-			// Plain text output - just the extracted content
-			if result.Error != "" {
-				outputContent = fmt.Sprintf("ERROR: %s\n", result.Error)
-			} else if len(result.ExtractedParts) == 0 {
-				outputContent = "No relevant content found.\n"
-			} else {
-				outputContent = strings.Join(result.ExtractedParts, "\n\n---\n\n")
-			}
+			outputContent = plainExtractResult(result)
 		}
 
 		if err := os.WriteFile(extractRelevantOutput, []byte(outputContent), 0644); err != nil {
@@ -556,14 +549,25 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 	// Output to stdout
 	formatter := output.New(extractRelevantJSON, extractRelevantMinimal, cmd.OutOrStdout())
 	return formatter.Print(finalResult, func(w io.Writer, data interface{}) {
-		if result.Error != "" {
-			_, _ = fmt.Fprintf(w, "ERROR: %s\n", result.Error)
-		} else if len(result.ExtractedParts) == 0 {
-			_, _ = fmt.Fprintln(w, "No relevant content found.")
-		} else {
-			_, _ = fmt.Fprint(w, strings.Join(result.ExtractedParts, "\n\n---\n\n"))
-		}
+		_, _ = fmt.Fprint(w, plainExtractResult(result))
 	})
+}
+
+// plainExtractResult renders the text output for stdout and -o alike. An error
+// leads, and any extraction kept from a partial directory run follows it, so
+// text mode loses nothing --json carries.
+func plainExtractResult(result ExtractRelevantResult) string {
+	parts := strings.Join(result.ExtractedParts, "\n\n---\n\n")
+	switch {
+	case result.Error != "" && parts != "":
+		return fmt.Sprintf("ERROR: %s\n\n%s", result.Error, parts)
+	case result.Error != "":
+		return fmt.Sprintf("ERROR: %s\n", result.Error)
+	case parts == "":
+		return "No relevant content found.\n"
+	default:
+		return parts
+	}
 }
 
 func init() {
