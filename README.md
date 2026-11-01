@@ -11,7 +11,15 @@ A CLI built to the [AXI](https://axi.md) principles. It turns outside content in
 
 ## Status
 
-`extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is not here yet.
+`extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is ported from `llm-tools`, direct tier only.
+
+```bash
+llm-extract fetch https://example.com                   # body to stdout
+llm-extract fetch https://example.com --output page.html
+llm-extract fetch https://example.com --json
+```
+
+A failed fetch, a non-2xx status, or a page that needs a browser (a challenge page) exits non-zero with the reason on stderr, never an empty result. There is no proxy or FlareSolverr tier, and `--format` accepts `raw` only; `text` and `markdown` are rejected.
 
 ## Build
 

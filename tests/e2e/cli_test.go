@@ -6,6 +6,8 @@
 package e2e
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -57,5 +59,25 @@ func TestCLIUnknownCommandExitsNonZero(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "no-such-command") {
 		t.Errorf("error does not name the bad command:\n%s", out)
+	}
+}
+
+// Defends the exit code of `fetch` across the process boundary: a challenge
+// page must exit non-zero from the real binary and print nothing on stdout.
+func TestCLIFetchChallengeExitsNonZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("<title>Just a moment...</title>"))
+	}))
+	defer srv.Close()
+	cmd := exec.Command(binary(t, "llm-extract"), "fetch", srv.URL)
+	cmd.Env = append(os.Environ(), "FETCH_MAX_RETRIES=0")
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err == nil {
+		t.Fatalf("challenge page exited 0; stdout=%q", stdout.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "needs a browser") {
+		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
