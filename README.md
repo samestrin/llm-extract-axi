@@ -7,7 +7,7 @@
 
 A CLI built to the [AXI](https://axi.md) principles. It turns outside content into something smaller, using the network or a model only when it has to, and it says when it does. See [VISION.md](VISION.md) for what it is for and what it is not.
 
-`llm-extract` is the product. An MCP server that shells out to it is planned as a fallback for environments that cannot run a CLI.
+`llm-extract` is the product. `llm-extract-mcp` is an MCP server that shells out to it, a fallback for environments that cannot run a CLI.
 
 ## Status
 
