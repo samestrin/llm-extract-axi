@@ -275,3 +275,77 @@ func TestExtractLinksRankingFailureKeepsEveryHeuristicLink(t *testing.T) {
 		t.Errorf("want all 150 heuristic links, got total=%d len=%d", got.Total, len(got.Links))
 	}
 }
+
+// partialDirectory sets up good.md, whose model call succeeds, and bad.md,
+// whose call fails with a 500.
+func partialDirectory(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := new(bytes.Buffer)
+		_, _ = body.ReadFrom(r.Body)
+		if strings.Contains(body.String(), "bad.md") {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"good part"}}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	pointExtractRelevantAt(t, srv)
+	noRetryDelay(t)
+
+	dir := t.TempDir()
+	for _, name := range []string{"good.md", "bad.md"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("body\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// Defends the partial result in text mode: a directory run with one failed
+// file printed only the ERROR line and dropped the good file's extraction,
+// which --json still carried.
+func TestExtractRelevantPartialDirectoryTextKeepsTheRest(t *testing.T) {
+	dir := partialDirectory(t)
+	code, out, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "x")
+	if code == 0 {
+		t.Fatalf("a directory with a failed model call exited 0:\n%s", out)
+	}
+	if !strings.HasPrefix(out, "ERROR: 1 of 2 files failed") {
+		t.Errorf("text output does not lead with the error:\n%s", out)
+	}
+	if !strings.Contains(out, "good part") {
+		t.Errorf("text output dropped the good file's extraction:\n%s", out)
+	}
+}
+
+// Defends the same partial result when written with -o in plain text.
+func TestExtractRelevantPartialDirectoryOutputFileKeepsTheRest(t *testing.T) {
+	dir := partialDirectory(t)
+	dst := filepath.Join(t.TempDir(), "out.txt")
+	code, _, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "x", "-o", dst)
+	if code == 0 {
+		t.Fatal("a directory with a failed model call exited 0")
+	}
+	body, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(body), "ERROR: 1 of 2 files failed") || !strings.Contains(string(body), "good part") {
+		t.Errorf("the output file does not carry both the error and the good extraction:\n%s", body)
+	}
+}
+
+// Defends the text output of a fetch failure: with no links there is nothing
+// partial to show, so the error line is the whole output, with no empty
+// "Total Links: 0" block after it.
+func TestExtractLinksFetchErrorTextIsOnlyTheError(t *testing.T) {
+	code, out, _ := runCLI(t, "extract-links", "--url", notFoundPage(t))
+	if code == 0 {
+		t.Fatalf("a 404 exited 0:\n%s", out)
+	}
+	if !strings.HasPrefix(out, "ERROR:") || strings.Contains(out, "Total Links") {
+		t.Errorf("want only the error line, got:\n%s", out)
+	}
+}
