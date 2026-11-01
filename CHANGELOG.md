@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `extract-links` and `extract-relevant` exit non-zero when a fetch or model call fails; before, they printed the error and exited 0. The output still carries the error. Partial results are kept and labelled: `extract-links --context` prints every heuristic link (not only the first 100) after the ranking error, in text mode as well as `--json`, and an `extract-relevant` directory run keeps the files that succeeded and reports how many failed, where before a failed file was dropped silently. An `extract-relevant` run on a directory with no suitable files, already reported as an error, now also exits non-zero.
+
 ### Added
 
 - README section "Which commands reach outside": every command labelled network, model, or neither, plus how the model keys are set (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`).

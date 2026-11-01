@@ -23,7 +23,7 @@ This is the one tool in the family that may go to the network or spend money on 
 | `extract-links` | Always — fetches the URL | Only with `--context` (LLM link ranking) |
 | `extract-relevant` | Only when `--path` is a URL | Always — `--context` is required |
 
-`extract-relevant` always needs a model, and which failure you get depends on when it fails: with no API key set it exits non-zero before doing any work, but a model call that fails mid-run prints an `ERROR: <reason>` line and exits 0. `extract-links --context` behaves differently: when LLM ranking fails (for example no API key is set), it prints an `ERROR: LLM ranking failed: <reason>` line and exits 0. In `--json` mode the output also carries the unranked heuristic links alongside the error; in text mode the error line is the whole output. Either way the failure is said aloud — never an empty success.
+A failed fetch or a failed model call exits non-zero from both `extract-links` and `extract-relevant`, with the reason on stderr. The output is still printed and carries the error: an `ERROR: <reason>` line in text mode, the `error` field in `--json`. `extract-relevant` with no API key set fails before doing any work. A partial result is kept and says it is partial, but the exit is still non-zero: when `extract-links --context` ranking fails (for example no API key is set), every unranked heuristic link is printed after `ERROR: LLM ranking failed: <reason>`; when some files in an `extract-relevant` directory run fail, the extractions from the rest are printed and the error reads `<n> of <total> files failed (first: <file>: <reason>)`. Through `llm-extract-mcp` a non-zero exit is an error result carrying stderr, so the partial result is not returned there.
 
 ### Setting keys
 
