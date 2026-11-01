@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -243,5 +244,34 @@ func TestExtractRelevantOutputFileFailureExitsNonZero(t *testing.T) {
 	body, err := os.ReadFile(dst)
 	if err != nil || !strings.HasPrefix(string(body), "ERROR:") {
 		t.Errorf("the output file does not carry the error: %q (%v)", body, err)
+	}
+}
+
+// Defends the partial result's size: rankLinksWithLLM sends at most 100 links
+// to the model, so returning its slice on failure dropped every link past the
+// 100th and reported the smaller total as the page's.
+func TestExtractLinksRankingFailureKeepsEveryHeuristicLink(t *testing.T) {
+	failingLLM(t, http.StatusUnauthorized)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b strings.Builder
+		b.WriteString("<html><body>")
+		for i := 0; i < 150; i++ {
+			fmt.Fprintf(&b, `<p><a href="/p%d">Page %d</a></p>`, i, i)
+		}
+		b.WriteString("</body></html>")
+		_, _ = w.Write([]byte(b.String()))
+	}))
+	t.Cleanup(srv.Close)
+
+	code, out, _ := runCLI(t, "extract-links", "--url", srv.URL, "--context", "x", "--json")
+	if code == 0 {
+		t.Fatalf("a model 401 exited 0")
+	}
+	var got ExtractLinksResult
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out)
+	}
+	if got.Total != 150 || len(got.Links) != 150 {
+		t.Errorf("want all 150 heuristic links, got total=%d len=%d", got.Total, len(got.Links))
 	}
 }

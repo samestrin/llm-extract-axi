@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,7 +81,10 @@ API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
 		Args: cobra.NoArgs,
-		RunE: runExtractRelevant,
+		// A failed fetch or model call is not a usage mistake, and usage text
+		// after the JSON would make stdout unparseable.
+		SilenceUsage: true,
+		RunE:         runExtractRelevant,
 	}
 
 	cmd.Flags().StringVar(&extractRelevantPath, "path", ".", "File or directory path to process")
@@ -151,8 +155,15 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
 
-	// Output result
-	return outputExtractResult(cmd, result)
+	if err := outputExtractResult(cmd, result); err != nil {
+		return err
+	}
+	// The output already carries the error; returning it as well is what makes
+	// the exit code non-zero.
+	if result.Error != "" {
+		return errors.New(result.Error)
+	}
+	return nil
 }
 
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
@@ -399,19 +410,30 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		return fmt.Sprintf("## %s\n\n%s", relPath, extracted), nil
 	})
 
-	// Collect successful results
+	// Collect successful results. A failed file is not dropped silently: the
+	// others are kept as a partial result and the run fails, naming the first.
+	var failed int
+	var firstErr string
 	for _, r := range results {
-		if r.Error == nil && r.Output != nil {
-			output := r.Output.(string)
-			if output != "" {
+		if r.Error != nil {
+			if failed == 0 {
+				relPath, _ := filepath.Rel(dirPath, files[r.Index])
+				firstErr = fmt.Sprintf("%s: %v", relPath, r.Error)
+			}
+			failed++
+			continue
+		}
+		result.ProcessedFiles++
+		if r.Output != nil {
+			if output := r.Output.(string); output != "" {
 				result.ExtractedParts = append(result.ExtractedParts, output)
 			}
 		}
-		if r.Error == nil {
-			result.ProcessedFiles++
-		}
 	}
 
+	if failed > 0 {
+		return fmt.Errorf("%d of %d files failed (first: %s)", failed, len(files), firstErr)
+	}
 	return nil
 }
 
