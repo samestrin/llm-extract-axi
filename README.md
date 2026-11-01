@@ -23,7 +23,7 @@ This is the one tool in the family that may go to the network or spend money on 
 | `extract-links` | Always — fetches the URL | Only with `--context` (LLM link ranking) |
 | `extract-relevant` | Only when `--path` is a URL | Always — `--context` is required |
 
-A command that needs a model fails with an error when no API key is set; it never silently degrades to a heuristic result. When `extract-links --context` LLM ranking fails, the command says so and returns the heuristic links marked as partial — never an empty success.
+`extract-relevant`, which always needs a model, fails with an error when no API key is set or the model call fails. `extract-links --context` behaves differently: when LLM ranking fails (for example no API key is set), it prints an `ERROR: LLM ranking failed: <reason>` line and exits 0. In `--json` mode the output also carries the unranked heuristic links alongside the error; in text mode the error line is the whole output. Either way the failure is said aloud — never an empty success.
 
 ### Setting keys
 
