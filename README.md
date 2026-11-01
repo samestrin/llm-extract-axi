@@ -11,7 +11,7 @@ A CLI built to the [AXI](https://axi.md) principles. It turns outside content in
 
 ## Status
 
-`fetch` is here (direct tier only); `extract-relevant` and `extract-links` are not yet.
+`extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is ported from `llm-tools`, direct tier only.
 
 ```bash
 llm-extract fetch https://example.com                   # body to stdout
