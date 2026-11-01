@@ -120,3 +120,61 @@ func TestNewRegistersEveryTool(t *testing.T) {
 		t.Error("server or tools missing")
 	}
 }
+
+// Defends the documented discovery order: a binary beside the server wins, and
+// PATH is the last resort. Removing either branch must turn this red.
+func TestFindBinarySiblingAndPath(t *testing.T) {
+	t.Setenv(BinaryEnv, "")
+	dir := t.TempDir()
+	name := "llm-extract"
+	sibling := filepath.Join(dir, name)
+	if err := os.WriteFile(sibling, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := executable
+	t.Cleanup(func() { executable = old })
+	executable = func() (string, error) { return filepath.Join(dir, "llm-extract-mcp"), nil }
+	t.Setenv("PATH", t.TempDir())
+	if got, err := FindBinary(); err != nil || got != sibling {
+		t.Errorf("sibling: got %q, %v; want %q", got, err, sibling)
+	}
+
+	pathDir := t.TempDir()
+	onPath := filepath.Join(pathDir, name)
+	if err := os.WriteFile(onPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	executable = func() (string, error) { return filepath.Join(t.TempDir(), "llm-extract-mcp"), nil }
+	t.Setenv("PATH", pathDir)
+	if got, err := FindBinary(); err != nil || got != onPath {
+		t.Errorf("PATH: got %q, %v; want %q", got, err, onPath)
+	}
+}
+
+// Defends the required-argument guard on every tool: a missing key must be an
+// error naming it, not a CLI run with an empty value.
+func TestMissingRequiredArgumentsAllTools(t *testing.T) {
+	cases := []struct{ tool, in, key string }{
+		{"fetch", `{}`, "url"},
+		{"extract_links", `{}`, "url"},
+		{"extract_relevant", `{}`, "path"},
+		{"extract_relevant", `{"path":"p"}`, "context"},
+	}
+	for _, c := range cases {
+		r := Run(context.Background(), "/nonexistent", c.tool, json.RawMessage(c.in))
+		if !r.IsError || !strings.Contains(text(t, r.Content), c.key) {
+			t.Errorf("%s %s: want error naming %q, got %+v", c.tool, c.in, c.key, r)
+		}
+	}
+}
+
+// Defends the error text when the CLI dies without writing to stderr: it must
+// still name the subcommand and carry a reason.
+func TestNonZeroExitWithEmptyStderr(t *testing.T) {
+	bin := fakeCLI(t, "exit 1")
+	r := Run(context.Background(), bin, "fetch", json.RawMessage(`{"url":"http://x"}`))
+	got := text(t, r.Content)
+	if !r.IsError || !strings.Contains(got, "llm-extract fetch failed: exit status 1") {
+		t.Errorf("got %+v %s", r, got)
+	}
+}

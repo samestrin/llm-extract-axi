@@ -24,6 +24,9 @@ const BinaryEnv = "LLM_EXTRACT_BIN"
 
 const instructions = "llm-extract MCP fetches web pages and reduces files or pages to what an agent needs. It is a fallback for environments that cannot run the llm-extract CLI directly; the CLI is the primary interface. A failed fetch or model call is returned as an error, never as an empty result."
 
+// executable is os.Executable, replaceable so a test can point discovery at a temp dir.
+var executable = os.Executable
+
 // FindBinary locates llm-extract: $LLM_EXTRACT_BIN, then next to this
 // executable, then on PATH.
 func FindBinary() (string, error) {
@@ -37,7 +40,7 @@ func FindBinary() (string, error) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	if exe, err := os.Executable(); err == nil {
+	if exe, err := executable(); err == nil {
 		sibling := filepath.Join(filepath.Dir(exe), name)
 		if _, err := os.Stat(sibling); err == nil {
 			return sibling, nil
