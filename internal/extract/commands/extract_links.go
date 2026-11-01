@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -86,7 +87,11 @@ Examples:
   llm-extract extract-links --url https://example.com/docs --context "authentication"
   llm-extract extract-links --url https://api.example.com --context "rate limiting" --json`,
 		Args: cobra.NoArgs,
-		RunE: runExtractLinks,
+		// The root already silences usage for the binary; this covers the
+		// command run on its own, as the tests do, where a runtime failure
+		// would otherwise print usage after the JSON.
+		SilenceUsage: true,
+		RunE:         runExtractLinks,
 	}
 
 	cmd.Flags().StringVar(&extractLinksURL, "url", "", "URL to extract links from (required)")
@@ -120,19 +125,29 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	} else {
 		// If context is provided, use LLM ranking instead of heuristic
 		if extractLinksContext != "" {
-			links, err = rankLinksWithLLM(links, extractLinksContext, extractLinksTimeout)
+			// On failure the heuristic links are kept: they are printed as a
+			// partial result alongside the error, and the exit is non-zero.
+			// All of them: rankLinksWithLLM may return only the first 100.
+			ranked, err := rankLinksWithLLM(links, extractLinksContext, extractLinksTimeout)
 			if err != nil {
 				result.Error = fmt.Sprintf("LLM ranking failed: %v", err)
-				result.Links = links // Still include links even if LLM fails
-				result.Total = len(links)
-				return outputExtractLinksResult(cmd, result)
+			} else {
+				links = ranked
 			}
 		}
 		result.Links = links
 		result.Total = len(links)
 	}
 
-	return outputExtractLinksResult(cmd, result)
+	if err := outputExtractLinksResult(cmd, result); err != nil {
+		return err
+	}
+	// The output already carries the error; returning it as well is what makes
+	// the exit code non-zero.
+	if result.Error != "" {
+		return errors.New(result.Error)
+	}
+	return nil
 }
 
 // fetchAndExtractLinks fetches a URL and extracts all links with ranking
@@ -391,7 +406,7 @@ func rankLinksWithLLM(links []LinkInfo, context string, timeout int) ([]LinkInfo
 	}
 
 	// Create LLM client
-	client := llmapi.NewLLMClientFromConfig(config)
+	client := newLLMClient(config)
 
 	// Prepare links for LLM input (limit to avoid token limits)
 	maxLinks := 100
@@ -523,7 +538,10 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 		r := data.(ExtractLinksResult)
 		if r.Error != "" {
 			_, _ = fmt.Fprintf(w, "ERROR: %s\n", r.Error)
-			return
+			if len(result.Links) == 0 {
+				return
+			}
+			_, _ = fmt.Fprintln(w)
 		}
 
 		_, _ = fmt.Fprintf(w, "URL: %s\n", result.URL)

@@ -258,9 +258,11 @@ func TestExtractRelevantReportsAnEmptyDirectory(t *testing.T) {
 	srv := fakeLLM(t, func(string) string { return "x" })
 	pointExtractRelevantAt(t, srv)
 
+	// An empty directory is reported as an error, so it also fails the run
+	// (EST-3861): an error field with exit 0 is a success to most callers.
 	out, err := runExtractRelevantCmd(t, "--path", t.TempDir(), "--context", "anything", "--json")
-	if err != nil {
-		t.Fatalf("extract-relevant: %v", err)
+	if err == nil {
+		t.Error("an empty directory returned no error, so the process would exit 0")
 	}
 	got := decodeExtractResult(t, out)
 	if got.Error == "" {
@@ -357,8 +359,8 @@ func TestExtractRelevantSurfacesAnHTTPError(t *testing.T) {
 	pointExtractRelevantAt(t, srv)
 
 	out, err := runExtractRelevantCmd(t, "--path", page.URL, "--context", "anything", "--json")
-	if err != nil {
-		t.Fatalf("extract-relevant: %v", err)
+	if err == nil {
+		t.Error("a 404 returned no error, so the process would exit 0")
 	}
 	got := decodeExtractResult(t, out)
 	if got.Error == "" {

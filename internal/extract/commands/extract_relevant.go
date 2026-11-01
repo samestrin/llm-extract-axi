@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,10 @@ var (
 	extractRelevantMinimal     bool
 	extractRelevantPath        string
 )
+
+// newLLMClient builds the model client for both commands. It is a variable so
+// a test can drop the retry backoff, which costs 14s against a fake 500.
+var newLLMClient = llmapi.NewLLMClientFromConfig
 
 // ExtractRelevantResult holds the extraction result
 type ExtractRelevantResult struct {
@@ -76,7 +81,11 @@ API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
 		Args: cobra.NoArgs,
-		RunE: runExtractRelevant,
+		// The root already silences usage for the binary; this covers the
+		// command run on its own, as the tests do, where a runtime failure
+		// would otherwise print usage after the JSON.
+		SilenceUsage: true,
+		RunE:         runExtractRelevant,
 	}
 
 	cmd.Flags().StringVar(&extractRelevantPath, "path", ".", "File or directory path to process")
@@ -108,7 +117,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create LLM client
-	client := llmapi.NewLLMClientFromConfig(config)
+	client := newLLMClient(config)
 
 	result := ExtractRelevantResult{
 		Context: extractRelevantContext,
@@ -147,8 +156,15 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
 
-	// Output result
-	return outputExtractResult(cmd, result)
+	if err := outputExtractResult(cmd, result); err != nil {
+		return err
+	}
+	// The output already carries the error; returning it as well is what makes
+	// the exit code non-zero.
+	if result.Error != "" {
+		return errors.New(result.Error)
+	}
+	return nil
 }
 
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
@@ -395,19 +411,30 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		return fmt.Sprintf("## %s\n\n%s", relPath, extracted), nil
 	})
 
-	// Collect successful results
+	// Collect successful results. A failed file is not dropped silently: the
+	// others are kept as a partial result and the run fails, naming the first.
+	var failed int
+	var firstErr string
 	for _, r := range results {
-		if r.Error == nil && r.Output != nil {
-			output := r.Output.(string)
-			if output != "" {
+		if r.Error != nil {
+			if failed == 0 {
+				relPath, _ := filepath.Rel(dirPath, files[r.Index])
+				firstErr = fmt.Sprintf("%s: %v", relPath, r.Error)
+			}
+			failed++
+			continue
+		}
+		result.ProcessedFiles++
+		if r.Output != nil {
+			if output := r.Output.(string); output != "" {
 				result.ExtractedParts = append(result.ExtractedParts, output)
 			}
 		}
-		if r.Error == nil {
-			result.ProcessedFiles++
-		}
 	}
 
+	if failed > 0 {
+		return fmt.Errorf("%d of %d files failed (first: %s)", failed, len(files), firstErr)
+	}
 	return nil
 }
 
@@ -508,14 +535,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			_ = formatter.Print(finalResult, nil)
 			outputContent = buf.String()
 		} else {
-			// Plain text output - just the extracted content
-			if result.Error != "" {
-				outputContent = fmt.Sprintf("ERROR: %s\n", result.Error)
-			} else if len(result.ExtractedParts) == 0 {
-				outputContent = "No relevant content found.\n"
-			} else {
-				outputContent = strings.Join(result.ExtractedParts, "\n\n---\n\n")
-			}
+			outputContent = plainExtractResult(result)
 		}
 
 		if err := os.WriteFile(extractRelevantOutput, []byte(outputContent), 0644); err != nil {
@@ -530,14 +550,25 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 	// Output to stdout
 	formatter := output.New(extractRelevantJSON, extractRelevantMinimal, cmd.OutOrStdout())
 	return formatter.Print(finalResult, func(w io.Writer, data interface{}) {
-		if result.Error != "" {
-			_, _ = fmt.Fprintf(w, "ERROR: %s\n", result.Error)
-		} else if len(result.ExtractedParts) == 0 {
-			_, _ = fmt.Fprintln(w, "No relevant content found.")
-		} else {
-			_, _ = fmt.Fprint(w, strings.Join(result.ExtractedParts, "\n\n---\n\n"))
-		}
+		_, _ = fmt.Fprint(w, plainExtractResult(result))
 	})
+}
+
+// plainExtractResult renders the text output for stdout and -o alike. An error
+// leads, and any extraction kept from a partial directory run follows it, so
+// text mode loses nothing --json carries.
+func plainExtractResult(result ExtractRelevantResult) string {
+	parts := strings.Join(result.ExtractedParts, "\n\n---\n\n")
+	switch {
+	case result.Error != "" && parts != "":
+		return fmt.Sprintf("ERROR: %s\n\n%s", result.Error, parts)
+	case result.Error != "":
+		return fmt.Sprintf("ERROR: %s\n", result.Error)
+	case parts == "":
+		return "No relevant content found.\n"
+	default:
+		return parts
+	}
 }
 
 func init() {
