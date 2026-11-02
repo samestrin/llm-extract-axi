@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting Started - Quarry Docs</title>
+  <meta name="description" content="Install Quarry, configure your first project and run your first query in under five minutes.">
+  <meta property="og:title" content="Getting Started - Quarry Docs">
+  <meta property="og:description" content="Install Quarry, configure your first project and run your first query in under five minutes.">
+  <meta property="og:type" content="article">
+  <meta property="og:image" content="/assets/img/og-default.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="canonical" href="/docs/getting-started/">
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/img/favicon-32.png">
+  <link rel="stylesheet" href="/assets/css/main.4f9c2a1e.css">
+  <link rel="preload" as="font" type="font/woff2" href="/assets/fonts/inter-var.woff2" crossorigin>
+  <style>
+    :root { --brand: #3b5bdb; --brand-dark: #2b44a8; --text: #1f2328; --muted: #57606a; --border: #d0d7de; --bg-subtle: #f6f8fa; --sidebar-width: 280px; --header-height: 64px; }
+    [data-theme="dark"] { --text: #e6edf3; --muted: #8d96a0; --border: #30363d; --bg-subtle: #161b22; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--text); line-height: 1.6; }
+    .site-header { position: sticky; top: 0; height: var(--header-height); display: flex; align-items: center; gap: 24px; padding: 0 24px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); z-index: 10; }
+    .site-header .logo { font-weight: 700; font-size: 1.125rem; color: var(--brand); text-decoration: none; }
+    .site-header nav ul { display: flex; gap: 16px; list-style: none; margin: 0; padding: 0; }
+    .site-header nav a { color: var(--muted); text-decoration: none; font-size: 0.9375rem; }
+    .site-header nav a:hover, .site-header nav a[aria-current="page"] { color: var(--text); }
+    .layout { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 220px; gap: 32px; max-width: 1440px; margin: 0 auto; }
+    .sidebar { position: sticky; top: var(--header-height); height: calc(100vh - var(--header-height)); overflow-y: auto; padding: 24px 0 24px 24px; border-right: 1px solid var(--border); }
+    .sidebar h4 { margin: 16px 0 8px; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .sidebar ul { list-style: none; margin: 0; padding: 0; }
+    .sidebar li a { display: block; padding: 4px 12px; border-radius: 6px; color: var(--text); text-decoration: none; font-size: 0.875rem; }
+    .sidebar li a.active { background: var(--brand); color: #fff; }
+    .content { padding: 32px 0 64px; min-width: 0; }
+    .content h1 { font-size: 2.25rem; margin: 0 0 8px; }
+    .content h2 { font-size: 1.5rem; margin: 40px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .content h3 { font-size: 1.125rem; margin: 28px 0 8px; }
+    .content pre { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; font-size: 0.8125rem; }
+    .content code { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .callout { border-left: 4px solid var(--brand); background: var(--bg-subtle); padding: 12px 16px; margin: 20px 0; border-radius: 0 8px 8px 0; }
+    .callout.warning { border-left-color: #d29922; }
+    .toc { position: sticky; top: var(--header-height); padding: 32px 24px 0 0; font-size: 0.8125rem; }
+    .toc a { color: var(--muted); text-decoration: none; display: block; padding: 2px 0; }
+    .btn { display: inline-block; padding: 8px 16px; border-radius: 6px; background: var(--brand); color: #fff; text-decoration: none; font-weight: 600; }
+    .btn:hover { background: var(--brand-dark); }
+    .site-footer { border-top: 1px solid var(--border); padding: 32px 24px; color: var(--muted); font-size: 0.8125rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+    .site-footer a { color: var(--muted); text-decoration: none; display: block; padding: 2px 0; }
+    @media (max-width: 1100px) { .layout { grid-template-columns: var(--sidebar-width) minmax(0, 1fr); } .toc { display: none; } }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } .sidebar { display: none; } .site-footer { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+  <script>
+    (function () {
+      var stored = null;
+      try { stored = window.localStorage.getItem("quarry-theme"); } catch (e) { /* private mode */ }
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", stored || (prefersDark ? "dark" : "light"));
+    })();
+  </script>
+  <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"TechArticle","headline":"Getting Started","description":"Install Quarry, configure your first project and run your first query in under five minutes.","datePublished":"2026-03-14","dateModified":"2026-10-02","author":{"@type":"Organization","name":"Quarry"},"publisher":{"@type":"Organization","name":"Quarry","logo":{"@type":"ImageObject","url":"/assets/img/logo.png"}}}
+  </script>
+  <script async src="/assets/js/analytics.min.js" data-site="QRY-DOCS-01" data-respect-dnt="true"></script>
+</head>
+<body class="docs-page page-getting-started">
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <a class="logo" href="/" title="Quarry home">Quarry</a>
+    <nav aria-label="Primary">
+      <ul>
+        <li><a href="/docs/" aria-current="page">Docs</a></li>
+        <li><a href="/docs/api/">API Reference</a></li>
+        <li><a href="/guides/">Guides</a></li>
+        <li><a href="/blog/">Blog</a></li>
+        <li><a href="/changelog/">Changelog</a></li>
+        <li><a href="/community/">Community</a></li>
+        <li><a href="https://github.com/quarry-dev/quarry" rel="noopener">GitHub</a></li>
+      </ul>
+    </nav>
+    <form class="search" action="/search/" role="search">
+      <label for="q" class="visually-hidden">Search the docs</label>
+      <input id="q" name="q" type="search" placeholder="Search docs..." autocomplete="off">
+    </form>
+    <a class="btn" href="/signup/" role="button">Get started free</a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" aria-label="Documentation">
+      <h4>Getting started</h4>
+      <ul>
+        <li><a class="active" href="/docs/getting-started/">Overview</a></li>
+        <li><a href="/docs/getting-started/install">Installation</a></li>
+        <li><a href="/docs/getting-started/first-project">Your first project</a></li>
+        <li><a href="/docs/getting-started/first-query">Your first query</a></li>
+        <li><a href="/docs/getting-started/upgrading">Upgrading</a></li>
+      </ul>
+      <h4>Concepts</h4>
+      <ul>
+        <li><a href="/docs/concepts/projects">Projects</a></li>
+        <li><a href="/docs/concepts/sources">Sources</a></li>
+        <li><a href="/docs/concepts/schemas">Schemas</a></li>
+        <li><a href="/docs/concepts/queries">Queries</a></li>
+        <li><a href="/docs/concepts/caching">Caching</a></li>
+        <li><a href="/docs/concepts/permissions">Permissions</a></li>
+      </ul>
+      <h4>Configuration</h4>
+      <ul>
+        <li><a href="/docs/config/file">quarry.toml reference</a></li>
+        <li><a href="/docs/config/environment">Environment variables</a></li>
+        <li><a href="/docs/config/secrets">Secrets</a></li>
+        <li><a href="/docs/config/profiles">Profiles</a></li>
+      </ul>
+      <h4>Operations</h4>
+      <ul>
+        <li><a href="/docs/ops/deploy">Deploying</a></li>
+        <li><a href="/docs/ops/monitoring">Monitoring</a></li>
+        <li><a href="/docs/ops/backups">Backups</a></li>
+        <li><a href="/docs/ops/troubleshooting">Troubleshooting</a></li>
+      </ul>
+    </aside>
+
+    <main id="main-content" class="content">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/docs/">Docs</a> <span aria-hidden="true">/</span> <span>Getting started</span>
+      </nav>
+      <h1 id="getting-started">Getting started</h1>
+      <p class="lead">Quarry turns the data you already have into a queryable project. This page takes you from nothing to your first query in about five minutes. If you are upgrading from 1.x, read <a href="/docs/getting-started/upgrading">Upgrading</a> first.</p>
+
+      <div class="callout">
+        <p><strong>Prerequisites.</strong> A 64-bit Linux, macOS or Windows machine, and about 200&nbsp;MB of free disk. No database server is needed; Quarry embeds its own. See <a href="/docs/ops/requirements" title="System requirements">system requirements</a> for the full list.</p>
+      </div>
+
+      <h2 id="install">1. Install the CLI</h2>
+      <p>The quickest path is the install script, which needs neither <code>sudo</code> nor a package manager. It verifies the download against the published checksums before it installs anything.</p>
+      <pre><code class="language-bash">curl -fsSL https://get.quarry.dev/install.sh | sh
+quarry --version</code></pre>
+      <p>Homebrew, Scoop and container images are covered in <a href="/docs/getting-started/install"><strong>the installation guide</strong></a>, along with how to pin a version and how to verify a release signature by hand.</p>
+
+      <h3 id="shell-completion">Shell completion</h3>
+      <p>Completion scripts for bash, zsh and fish ship with the binary. Run <code>quarry completion --help</code> or read <a href="/docs/cli/completion">shell completion</a>.</p>
+
+      <h2 id="first-project">2. Create a project</h2>
+      <p>A project is a directory holding a <code>quarry.toml</code> and the sources it reads. Create one with:</p>
+      <pre><code class="language-bash">mkdir orders &amp;&amp; cd orders
+quarry init --name orders</code></pre>
+      <p>The generated file is commented line by line; every key is described in the <a href="/docs/config/file">quarry.toml reference</a>. Projects can also inherit settings from a <a href="/docs/config/profiles"><em>profile</em></a>, which is how most teams share connection settings.</p>
+
+      <div class="callout warning">
+        <p><strong>Do not commit secrets.</strong> Connection strings belong in <a href="/docs/config/secrets">the secrets store</a> or in <a href="/docs/config/environment">environment variables</a>, never in <code>quarry.toml</code>.</p>
+      </div>
+
+      <h2 id="add-source">3. Add a source</h2>
+      <p>Sources are where your data lives: CSV and Parquet files, a Postgres or MySQL database, or an HTTP API. Point Quarry at a sample file to start:</p>
+      <pre><code class="language-bash">curl -fsSLO https://get.quarry.dev/samples/orders.csv
+quarry source add orders.csv --name orders</code></pre>
+      <p>Quarry infers a schema from the first 10,000 rows. You can review and override it; see <a href="/docs/concepts/schemas">schemas</a> and <a href="/guides/schema-overrides">overriding an inferred schema</a>.</p>
+
+      <h3 id="databases">Databases</h3>
+      <p>For a database source, store the connection string as a secret and reference it by name. Supported engines and their options are listed under <a href="/docs/sources/postgres">Postgres</a>, <a href="/docs/sources/mysql">MySQL</a>, <a href="/docs/sources/sqlite">SQLite</a> and <a href="/docs/sources/http">HTTP APIs</a>.</p>
+
+      <h2 id="first-query">4. Run your first query</h2>
+      <p>Queries are plain SQL with a few extensions for time series and nested data:</p>
+      <pre><code class="language-sql">SELECT customer_id, count(*) AS orders, sum(total) AS revenue
+FROM orders
+WHERE placed_at &gt;= now() - interval '30 days'
+GROUP BY customer_id
+ORDER BY revenue DESC
+LIMIT 10;</code></pre>
+      <p>Save it as <code>top-customers.sql</code> and run <code>quarry query top-customers.sql</code>. Results print as a table by default; add <code>--format json</code> or <code>--format csv</code> for machine output. The <a href="/docs/api/query">query API</a> runs the same file over HTTP.</p>
+
+      <h3 id="caching">How results are cached</h3>
+      <p>Results are cached per source version, so a repeated query over unchanged data returns instantly. Read <a href="/docs/concepts/caching">caching</a> to tune or disable it.</p>
+
+      <h2 id="next-steps">Next steps</h2>
+      <ul>
+        <li><a href="/guides/dashboards">Build a dashboard</a> from saved queries.</li>
+        <li><a href="/guides/scheduling">Schedule a query</a> and send the results to Slack or email.</li>
+        <li><a href="/docs/concepts/permissions">Share a project</a> with read-only permissions.</li>
+        <li><a href="/docs/ops/deploy">Deploy Quarry</a> as a service for your team.</li>
+      </ul>
+
+      <p class="page-actions">
+        <a href="https://github.com/quarry-dev/docs/edit/main/getting-started.md" rel="noopener">Edit this page</a>
+        <a href="/docs/getting-started/install" class="btn">Next: Installation &rarr;</a>
+      </p>
+      <div class="feedback" data-page="getting-started">
+        <span>Was this page helpful?</span>
+        <button type="button" data-vote="yes">Yes</button>
+        <button type="button" data-vote="no">No</button>
+      </div>
+    </main>
+
+    <aside class="toc" aria-label="On this page">
+      <p><strong>On this page</strong></p>
+      <a href="#install">1. Install the CLI</a>
+      <a href="#first-project">2. Create a project</a>
+      <a href="#add-source">3. Add a source</a>
+      <a href="#first-query">4. Run your first query</a>
+      <a href="#next-steps">Next steps</a>
+    </aside>
+  </div>
+
+  <footer class="site-footer">
+    <div>
+      <p><strong>Product</strong></p>
+      <a href="/features/">Features</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/enterprise/">Enterprise</a>
+      <a href="/security/">Security</a>
+    </div>
+    <div>
+      <p><strong>Resources</strong></p>
+      <a href="/docs/">Documentation</a>
+      <a href="/guides/">Guides</a>
+      <a href="/changelog/">Changelog</a>
+      <a href="https://status.quarry.dev/" rel="noopener">Status</a>
+    </div>
+    <div>
+      <p><strong>Company</strong></p>
+      <a href="/about/">About</a>
+      <a href="/careers/">Careers</a>
+      <a href="/contact/">Contact</a>
+      <a href="mailto:hello@quarry.dev">hello@quarry.dev</a>
+    </div>
+    <div>
+      <p><strong>Legal</strong></p>
+      <a href="/legal/terms">Terms</a>
+      <a href="/legal/privacy">Privacy</a>
+      <a href="/legal/cookies">Cookies</a>
+      <p>&copy; 2026 Quarry Labs. Example content for the llm-extract benchmark.</p>
+    </div>
+  </footer>
+
+  <script src="/assets/js/docs.7b1e03c2.js" defer></script>
+  <script>
+    document.querySelectorAll(".feedback button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var page = button.closest(".feedback").getAttribute("data-page");
+        if (window.quarryAnalytics) { window.quarryAnalytics.track("docs_feedback", { page: page, vote: button.getAttribute("data-vote") }); }
+        button.closest(".feedback").innerHTML = "<span>Thanks for the feedback.</span>";
+      });
+    });
+  </script>
+</body>
+</html>
