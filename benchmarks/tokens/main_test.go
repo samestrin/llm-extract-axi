@@ -54,6 +54,7 @@ func TestCountTokensFollowsCl100kSplit(t *testing.T) {
 		{"12345", 2},                 // "123", "45"
 		{`<a href="x">`, 5},          // "<a", " href", "=\"", "x", "\">"
 		{"a  b", 3},                  // "a", " ", " b"
+		{"a  1", 4},                  // "a", " ", " ", "1": a digit takes no space
 		{"a\n\n  b", 4},              // "a", "\n\n", " ", " b"
 		{"x !!\n", 2},                // "x", " !!\n"
 		{"end   ", 2},                // "end", "   "
