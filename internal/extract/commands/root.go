@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -41,9 +43,64 @@ when it has to, and says so.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		output.SetDefaultAXI(GlobalAXIOutput)
 	},
+	// A bare run shows content, not help: where the binary is, what it does,
+	// and which commands reach outside. --help still prints help.
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
+		return printHome(cmd.OutOrStdout())
 	},
+}
+
+// reach is one row of the home view's network and model table. Keep it in
+// step with the README section "Which commands reach outside".
+type reach struct{ command, network, model string }
+
+var reachTable = []reach{
+	{"fetch", "always (fetches the URL)", "never"},
+	{"extract-links", "always (fetches the URL)", "only with --context (LLM link ranking)"},
+	{"extract-relevant", "only when --path is a URL", "always (--context is required)"},
+}
+
+// executable locates the running binary; a variable so tests can stub it.
+var executable = os.Executable
+
+// printHome writes the bare-run view. It reads only the process's own path
+// and HOME: no network, no model.
+func printHome(w io.Writer) error {
+	var path string
+	if exe, err := executable(); err != nil {
+		path = fmt.Sprintf("unknown (%v)", err)
+	} else {
+		home, _ := os.UserHomeDir()
+		path = tildeHome(exe, home)
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "llm-extract\t%s\n", path)
+	_, _ = fmt.Fprintln(tw, "Fetch outside content and reduce it to what an agent needs.")
+	_, _ = fmt.Fprintln(tw)
+	_, _ = fmt.Fprintln(tw, "command\tnetwork\tmodel")
+	for _, r := range reachTable {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", r.command, r.network, r.model)
+	}
+	_, _ = fmt.Fprintln(tw)
+	_, _ = fmt.Fprintln(tw, "Run 'llm-extract --help' for flags, or 'llm-extract <command> --help'.")
+	return tw.Flush()
+}
+
+// tildeHome replaces a leading home directory in path with ~. A directory
+// that only shares home's prefix, such as /home/sam2 for /home/sam, is left
+// alone.
+func tildeHome(path, home string) string {
+	if home == "" {
+		return path
+	}
+	home = filepath.Clean(home)
+	if path == home {
+		return "~"
+	}
+	if rest, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return path
 }
 
 func init() {
