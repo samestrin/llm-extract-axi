@@ -22,6 +22,7 @@ This is the one tool in the family that may go to the network or spend money on 
 | `fetch` | Always — fetches the URL | Never |
 | `extract-links` | Always — fetches the URL | Only with `--context` (LLM link ranking) |
 | `extract-relevant` | Only when `--path` is a URL | Always — `--context` is required |
+| `setup` | Never | Never |
 
 Run `llm-extract` with no arguments to see this table, the path of the binary (home shown as `~`) and a one-line description; it makes no network or model call. `llm-extract --help` prints the full help.
 
@@ -30,6 +31,10 @@ A failed fetch or a failed model call exits non-zero from both `extract-links` a
 A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"); a failed run carries `error` and no total. When a model ran, the `--json`, `--min` and `--axi` output reports `model` and `bytes_sent` (`m`/`bs` in `--min`); `extract-links` without `--context` omits both.
 
 Exit codes: `0` on success, `1` when a command ran and failed (a failed fetch or model call, a partial result), `2` when the invocation itself is malformed (an unknown command or flag, a flag missing its argument). Retrying an exit 2 unchanged never helps.
+
+### Claude Code setup
+
+`llm-extract setup` (run in a project, or with `--dir`) writes a SessionStart hook into `.claude/settings.json` and an Agent Skill into `.claude/skills/llm-extract/SKILL.md`. Other settings are kept, a second run changes nothing, and `--dry-run` shows what would be written. It never touches your home directory.
 
 ### Setting keys
 
