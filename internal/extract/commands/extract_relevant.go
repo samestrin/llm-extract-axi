@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -51,6 +52,31 @@ type ExtractRelevantResult struct {
 	E               string   `json:"e,omitempty"`
 	ProcessingTimeS float64  `json:"processing_time_s,omitempty"`
 	PTS             *float64 `json:"pts,omitempty"`
+	// Total counts the extracted parts. It is a pointer so a successful run
+	// that found nothing prints "total":0; a failed run omits it.
+	Total *int `json:"total,omitempty"`
+	N     *int `json:"n,omitempty"`
+	// Message says outright that the run succeeded and found nothing.
+	Message string `json:"message,omitempty"`
+	Msg     string `json:"msg,omitempty"`
+	// Model and BytesSent describe the model calls made.
+	Model     string `json:"model,omitempty"`
+	M         string `json:"m,omitempty"`
+	BytesSent *int64 `json:"bytes_sent,omitempty"`
+	BS        *int64 `json:"bs,omitempty"`
+}
+
+// noRelevantMessage is the explicit zero-result message.
+const noRelevantMessage = "no relevant content found"
+
+// llmBytesSent totals the prompt bytes sent to the model in one run. Both
+// commands share it; each resets it at the start of a run.
+var llmBytesSent atomic.Int64
+
+// isNone reports whether the model answered that nothing was relevant.
+func isNone(s string) bool {
+	t := strings.TrimSpace(s)
+	return t == "" || t == "NONE"
 }
 
 // newExtractRelevantCmd creates the extract-relevant command
@@ -123,6 +149,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		Context: extractRelevantContext,
 	}
 
+	llmBytesSent.Store(0)
 	var err error
 
 	// Check if target is a URL
@@ -155,6 +182,17 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
+	if sent := llmBytesSent.Load(); sent > 0 {
+		result.Model = config.Model
+		result.BytesSent = &sent
+	}
+	if result.Error == "" {
+		total := len(result.ExtractedParts)
+		result.Total = &total
+		if total == 0 {
+			result.Message = noRelevantMessage
+		}
+	}
 
 	if err := outputExtractResult(cmd, result); err != nil {
 		return err
@@ -178,7 +216,9 @@ func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath st
 		return err
 	}
 
-	result.ExtractedParts = append(result.ExtractedParts, extracted)
+	if !isNone(extracted) {
+		result.ExtractedParts = append(result.ExtractedParts, extracted)
+	}
 	result.TotalFiles = 1
 	result.ProcessedFiles = 1
 
@@ -202,7 +242,9 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 		return err
 	}
 
-	result.ExtractedParts = append(result.ExtractedParts, extracted)
+	if !isNone(extracted) {
+		result.ExtractedParts = append(result.ExtractedParts, extracted)
+	}
 	result.TotalFiles = 1
 	result.ProcessedFiles = 1
 
@@ -456,6 +498,7 @@ Rules:
 		userPrompt = userPrompt[:30000] + "\n\n[Content truncated due to length]"
 	}
 
+	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
 	return client.CompleteWithSystem(systemPrompt, userPrompt, time.Duration(timeout)*time.Second)
 }
 
@@ -519,6 +562,10 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			PF:  &pf,
 			E:   result.Error,
 			PTS: &pts,
+			N:   result.Total,
+			Msg: result.Message,
+			M:   result.Model,
+			BS:  result.BytesSent,
 		}
 	} else {
 		finalResult = result
@@ -565,7 +612,7 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	case result.Error != "":
 		return fmt.Sprintf("ERROR: %s\n", result.Error)
 	case parts == "":
-		return "No relevant content found.\n"
+		return noRelevantMessage + "\n"
 	default:
 		return parts
 	}

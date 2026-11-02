@@ -45,11 +45,25 @@ type ExtractLinksResult struct {
 	U     string     `json:"u,omitempty"`
 	Links []LinkInfo `json:"links,omitempty"`
 	L     []LinkInfo `json:"l,omitempty"`
-	Total int        `json:"total,omitempty"`
-	N     *int       `json:"n,omitempty"`
-	Error string     `json:"error,omitempty"`
-	E     string     `json:"e,omitempty"`
+	// Total is a pointer so a successful run that found nothing prints
+	// "total":0, while a failed run, which has no total, omits it.
+	Total *int `json:"total,omitempty"`
+	N     *int `json:"n,omitempty"`
+	// Message says outright that a run succeeded and found no links, so an
+	// empty result cannot be mistaken for a failed one.
+	Message string `json:"message,omitempty"`
+	Msg     string `json:"msg,omitempty"`
+	// Model and BytesSent are set only when a model was called.
+	Model     string `json:"model,omitempty"`
+	M         string `json:"m,omitempty"`
+	BytesSent *int64 `json:"bytes_sent,omitempty"`
+	BS        *int64 `json:"bs,omitempty"`
+	Error     string `json:"error,omitempty"`
+	E         string `json:"e,omitempty"`
 }
+
+// noLinksMessage is the explicit zero-result message.
+const noLinksMessage = "no links found"
 
 // newExtractLinksCmd creates the extract-links command
 func newExtractLinksCmd() *cobra.Command {
@@ -119,6 +133,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 		URL: extractLinksURL,
 	}
 
+	llmBytesSent.Store(0)
 	links, err := fetchAndExtractLinks(extractLinksURL, extractLinksTimeout)
 	if err != nil {
 		result.Error = err.Error()
@@ -136,7 +151,15 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			}
 		}
 		result.Links = links
-		result.Total = len(links)
+		total := len(links)
+		result.Total = &total
+		if total == 0 {
+			result.Message = noLinksMessage
+		}
+	}
+	if sent := llmBytesSent.Load(); sent > 0 {
+		result.Model = llmapi.GetAPIConfig().Model
+		result.BytesSent = &sent
 	}
 
 	if err := outputExtractLinksResult(cmd, result); err != nil {
@@ -452,6 +475,7 @@ Do not include any explanation or text outside the JSON.`
 	}
 
 	// Call the LLM
+	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
 	response, err := client.CompleteWithSystem(systemPrompt, userPrompt, time.Duration(timeout)*time.Second)
 	if err != nil {
 		return links, fmt.Errorf("LLM request failed: %w", err)
@@ -522,12 +546,14 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 				Sec: link.Section,
 			}
 		}
-		total := result.Total
 		finalResult = ExtractLinksResult{
-			U: result.URL,
-			L: minLinks,
-			N: &total,
-			E: result.Error,
+			U:   result.URL,
+			L:   minLinks,
+			N:   result.Total,
+			Msg: result.Message,
+			M:   result.Model,
+			BS:  result.BytesSent,
+			E:   result.Error,
 		}
 	} else {
 		finalResult = result
@@ -545,7 +571,16 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 		}
 
 		_, _ = fmt.Fprintf(w, "URL: %s\n", result.URL)
-		_, _ = fmt.Fprintf(w, "Total Links: %d\n\n", result.Total)
+		if result.Total != nil {
+			_, _ = fmt.Fprintf(w, "Total Links: %d\n", *result.Total)
+		}
+		if result.Message != "" {
+			_, _ = fmt.Fprintf(w, "%s\n", result.Message)
+		}
+		if result.Model != "" {
+			_, _ = fmt.Fprintf(w, "Model: %s | Bytes sent: %d\n", result.Model, *result.BytesSent)
+		}
+		_, _ = fmt.Fprintln(w)
 
 		for _, link := range result.Links {
 			_, _ = fmt.Fprintf(w, "[%d] %s\n", link.Score, link.Text)
