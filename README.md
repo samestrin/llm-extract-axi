@@ -71,6 +71,24 @@ llm-extract fetch https://example.com --json
 
 A failed fetch, a non-2xx status, or a page that needs a browser (a challenge page) exits non-zero with the reason on stderr, never an empty result. There is no proxy or FlareSolverr tier, and `--format` accepts `raw` only; `text` and `markdown` are rejected.
 
+## Install
+
+One line, no sudo, no clone, no Go toolchain:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | bash
+```
+
+This installs `llm-extract` and `llm-extract-mcp` into `$HOME/.local/bin` (set `INSTALL_DIR` to install elsewhere). Both binaries are verified against the release's `SHA256SUMS.txt` before either is installed; on an unsupported platform, a failed or stalled download, or a checksum mismatch it installs nothing and leaves an existing install untouched.
+
+Pin a version instead of installing the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | LLM_EXTRACT_VERSION=v1.0.0 bash
+```
+
+If `~/.local/bin` is not on your `PATH`, the installer says so and prints the `export` line to add.
+
 ## Build
 
 ```bash
@@ -92,6 +110,10 @@ make hooks       # opt in to the pre-commit hook
 ```
 
 The test targets build first because the end-to-end tests run the real binary. CI fails below 80% coverage. See [AGENTS.md](AGENTS.md) for the house rules.
+
+## Support
+
+Support is best effort. Report bugs and request features as [GitHub issues](https://github.com/samestrin/llm-extract-axi/issues); there is no SLA and no guaranteed response time, and the project is maintained in spare time. Pull requests are welcome.
 
 ## License
 
