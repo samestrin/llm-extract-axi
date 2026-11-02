@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `llm-extract setup`: writes a SessionStart hook (running `llm-extract`) into the project's `.claude/settings.json`, merging with existing keys and hooks, and an Agent Skill at `.claude/skills/llm-extract/SKILL.md`. It prints each path, supports `--dry-run` and `--dir`, changes nothing on a second run, never prompts, and refuses to overwrite a settings file it cannot parse.
 - `llm-extract` with no arguments prints the binary's path (home shown as `~`), a one-sentence description and which commands use the network or a model, instead of the full help. It makes no network or model call. `--help` still prints help.
 - README section "Which commands reach outside": every command labelled network, model, or neither, plus how the model keys are set (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`).
 
