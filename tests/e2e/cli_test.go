@@ -6,6 +6,7 @@
 package e2e
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -157,5 +158,38 @@ func TestCLIExtractRelevantModelErrorExitsNonZero(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "ERROR:") || !strings.Contains(stderr.String(), "401") {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// Defends the AXI exit-code split across the process boundary: a malformed
+// invocation exits 2 and a command that ran and failed exits 1. A flat 1 for
+// both leaves a caller unable to tell a typo in a flag from an outage.
+func TestCLIExitCodeSeparatesUsageFromFailure(t *testing.T) {
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer down.Close()
+	cases := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"unknown flag", []string{"--bogus"}, 2},
+		{"unknown command", []string{"no-such-command"}, 2},
+		{"failed fetch", []string{"fetch", down.URL}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(binary(t, "llm-extract"), tc.args...)
+			cmd.Env = append(os.Environ(), "FETCH_MAX_RETRIES=0")
+			out, err := cmd.CombinedOutput()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				t.Fatalf("want exit %d, got err=%v\n%s", tc.want, err, out)
+			}
+			if got := exitErr.ExitCode(); got != tc.want {
+				t.Errorf("exit %d, want %d\n%s", got, tc.want, out)
+			}
+		})
 	}
 }

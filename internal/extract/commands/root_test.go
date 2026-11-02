@@ -29,6 +29,38 @@ func TestRunUnknownCommandFails(t *testing.T) {
 	}
 }
 
+// Defends the AXI split between a malformed invocation (exit 2: retrying it
+// unchanged never helps) and a command that ran and failed (exit 1: retrying
+// may). A flat 1 for both leaves a caller unable to tell a typo from an outage.
+func TestRunExitCodeSeparatesUsageFromFailure(t *testing.T) {
+	down := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer down.Close()
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	cases := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"unknown root flag", []string{"--bogus"}, 2},
+		{"unknown command", []string{"no-such-command"}, 2},
+		{"unknown subcommand flag", []string{"fetch", "--bogus", down.URL}, 2},
+		{"failed fetch", []string{"fetch", down.URL}, 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if code := run(tc.args, &stdout, &stderr); code != tc.want {
+				t.Fatalf("exit %d, want %d; stderr=%q", code, tc.want, stderr.String())
+			}
+			if !strings.HasPrefix(stderr.String(), "Error: ") {
+				t.Errorf("stderr does not carry the error: %q", stderr.String())
+			}
+		})
+	}
+}
+
 // Defends --version reading commands.Version, the variable the Makefile
 // stamps with -X. Stamping anything else leaves the binary reporting the
 // default.
