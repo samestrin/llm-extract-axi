@@ -374,8 +374,8 @@ func TestExtractLinksCommand_JSONOutput(t *testing.T) {
 	if result.URL != server.URL {
 		t.Errorf("expected URL %s, got %s", server.URL, result.URL)
 	}
-	if result.Total != 2 {
-		t.Errorf("expected 2 links, got %d", result.Total)
+	if *result.Total != 2 {
+		t.Errorf("expected 2 links, got %d", *result.Total)
 	}
 	if len(result.Links) != 2 {
 		t.Errorf("expected 2 links in array, got %d", len(result.Links))

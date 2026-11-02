@@ -108,7 +108,7 @@ func TestExtractLinksRankingWithNoKeyExitsNonZeroAndKeepsLinks(t *testing.T) {
 	if !strings.Contains(got.Error, "LLM ranking failed") || !strings.Contains(got.Error, "API key") {
 		t.Errorf("the JSON does not say ranking failed for want of a key: %q", got.Error)
 	}
-	if got.Total != 2 || len(got.Links) != 2 {
+	if *got.Total != 2 || len(got.Links) != 2 {
 		t.Errorf("the heuristic links were dropped: %+v", got)
 	}
 	if !strings.Contains(stderr, "LLM ranking failed") {
@@ -127,7 +127,7 @@ func TestExtractLinksRankingAPIErrorExitsNonZero(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, out)
 	}
-	if !strings.Contains(got.Error, "500") || got.Total != 2 {
+	if !strings.Contains(got.Error, "500") || *got.Total != 2 {
 		t.Errorf("want the 500 and the two heuristic links, got %+v", got)
 	}
 }
@@ -271,8 +271,8 @@ func TestExtractLinksRankingFailureKeepsEveryHeuristicLink(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("output is not JSON: %v\n%s", err, out)
 	}
-	if got.Total != 150 || len(got.Links) != 150 {
-		t.Errorf("want all 150 heuristic links, got total=%d len=%d", got.Total, len(got.Links))
+	if *got.Total != 150 || len(got.Links) != 150 {
+		t.Errorf("want all 150 heuristic links, got total=%d len=%d", *got.Total, len(got.Links))
 	}
 }
 
