@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Offline token benchmark, `./benchmarks/tokens.sh`: on a committed 15 KB documentation page, `extract-links --axi` prints 1652 tokens against the page's 4240, a 2.6x reduction. The page is served on loopback, no model is called and the tokenizer is built in, so it makes no network call; `benchmarks/README.md` says how to rerun it and how the tokens are counted.
 - `llm-extract setup`: writes a SessionStart hook (running `llm-extract`) into the project's `.claude/settings.json`, merging with existing keys and hooks, and an Agent Skill at `.claude/skills/llm-extract/SKILL.md`. It prints each path, supports `--dry-run` and `--dir`, changes nothing on a second run, never prompts, and refuses to overwrite a settings file it cannot parse.
 - `llm-extract` with no arguments prints the binary's path (home shown as `~`), a one-sentence description and which commands use the network or a model, instead of the full help. It makes no network or model call. `--help` still prints help.
 - `--json`/`--axi`/`--min` output of `extract-links --context` and `extract-relevant` now carries `model` and `bytes_sent` (`m`/`bs` in `--min`) when a model was called; heuristic runs omit them. Both commands also print `total` and a `message` ("no links found" / "no relevant content found") on a successful empty run, so it can be told from a failed run, which carries an `error` and no total. A lone "NONE" model answer now counts as no result rather than an extracted part.
