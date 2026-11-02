@@ -454,10 +454,29 @@ func TestInstallBuildsReleaseURLFromVersion(t *testing.T) {
 				t.Fatalf("curl was never called: %v\noutput:\n%s", err, out)
 			}
 			first := strings.SplitN(string(urls), "\n", 2)[0]
-			if !strings.HasPrefix(first, tc.want) {
-				t.Errorf("first download is %q, want it under %q", first, tc.want)
+			// SHA256SUMS.txt is fetched first, so it is the one URL logged.
+			if want := tc.want + "SHA256SUMS.txt"; first != want {
+				t.Errorf("first download is %q, want %q", first, want)
 			}
 			assertDirHolds(t, home, nil, out)
 		})
 	}
+}
+
+// The CLI is renamed into place before the server. If the server's rename
+// then fails, the old CLI must be put back (or, on a fresh install, the new
+// one removed): a new CLI beside an old server, or a CLI with no server, is a
+// mixed install the caller did not ask for. A fake mv that fails only for the
+// server's destination forces that path.
+func TestInstallRollsBackWhenSecondRenameFails(t *testing.T) {
+	realMv, err := exec.LookPath("mv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	mv := "#!/bin/sh\nfor last; do :; done\ncase \"$last\" in */llm-extract-mcp) echo 'fake mv: refused' >&2; exit 1 ;; esac\nexec '" + realMv + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "mv"), []byte(mv), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	checkRefusal(t, refusal{files: goodRelease(), path: dir})
 }
