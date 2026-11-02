@@ -58,6 +58,7 @@ var reachTable = []reach{
 	{"fetch", "always (fetches the URL)", "never"},
 	{"extract-links", "always (fetches the URL)", "only with --context (LLM link ranking)"},
 	{"extract-relevant", "only when --path is a URL", "always (--context is required)"},
+	{"setup", "never", "never"},
 }
 
 // executable locates the running binary; a variable so tests can stub it.
