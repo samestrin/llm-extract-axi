@@ -2,8 +2,10 @@ package commands
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,8 +81,9 @@ func TestRunVersionReportsVersionVariable(t *testing.T) {
 }
 
 // Defends against a second in-process run inheriting the first run's
-// arguments: the root is a package singleton.
-func TestRunNoArgsPrintsHelp(t *testing.T) {
+// arguments: the root is a package singleton. A bare run after --version must
+// print the home view, not the version again.
+func TestRunNoArgsDoesNotInheritPreviousArgs(t *testing.T) {
 	old := Version
 	t.Cleanup(func() { Version = old })
 	Version = "v9.9.9-test"
@@ -92,8 +95,101 @@ func TestRunNoArgsPrintsHelp(t *testing.T) {
 	if code := run(nil, &stdout, &stderr); code != 0 {
 		t.Fatalf("no args exited %d; stderr=%q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Usage:") || strings.Contains(stdout.String(), "v9.9.9") {
-		t.Errorf("no args did not print help: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "extract-relevant") || strings.Contains(stdout.String(), "v9.9.9") {
+		t.Errorf("no args did not print the home view: %q", stdout.String())
+	}
+}
+
+// Defends AXI content first: a bare run must show where the binary lives
+// (home shortened to ~), what the tool does in one sentence, and which
+// commands reach the network or a model, instead of a wall of help. It must
+// also reach neither: the model and fetch endpoints point at a server that
+// fails the test if it is called.
+func TestRunNoArgsPrintsHomeView(t *testing.T) {
+	hit := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("a bare run made a request: %s %s", r.Method, r.URL)
+	}))
+	defer hit.Close()
+	t.Setenv("OPENAI_BASE_URL", hit.URL)
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("HTTP_PROXY", hit.URL)
+	t.Setenv("HTTPS_PROXY", hit.URL)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	oldExe := executable
+	t.Cleanup(func() { executable = oldExe })
+	executable = func() (string, error) { return filepath.Join(home, "bin", "llm-extract"), nil }
+
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("no args exited %d; stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "~/bin/llm-extract") || strings.Contains(out, home) {
+		t.Errorf("home view does not show the executable path with ~ for home: %q", out)
+	}
+	if !strings.Contains(out, "Fetch outside content and reduce it to what an agent needs.") {
+		t.Errorf("home view lacks the one-sentence description: %q", out)
+	}
+	for _, want := range []string{"network", "model", "fetch", "extract-links", "extract-relevant", "only with --context", "only when --path is a URL"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("home view's network/model table lacks %q: %q", want, out)
+		}
+	}
+	if strings.Contains(out, "Usage:") {
+		t.Errorf("a bare run printed help instead of the home view: %q", out)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("a bare run wrote to stderr: %q", stderr.String())
+	}
+}
+
+// Defends the path shortening: only a path under home gets ~, and a sibling
+// directory that merely shares home's prefix (/home/sam2 under /home/sam)
+// must not be rewritten.
+func TestTildeHome(t *testing.T) {
+	cases := []struct{ path, home, want string }{
+		{"/home/sam/bin/x", "/home/sam", "~/bin/x"},
+		{"/home/sam", "/home/sam", "~"},
+		{"/home/sam2/bin/x", "/home/sam", "/home/sam2/bin/x"},
+		{"/usr/local/bin/x", "/home/sam", "/usr/local/bin/x"},
+		{"/usr/local/bin/x", "", "/usr/local/bin/x"},
+	}
+	for _, tc := range cases {
+		if got := tildeHome(tc.path, tc.home); got != tc.want {
+			t.Errorf("tildeHome(%q, %q) = %q, want %q", tc.path, tc.home, got, tc.want)
+		}
+	}
+}
+
+// Defends the home view when the executable cannot be located: it says so
+// rather than printing an empty path, and the rest of the view still prints.
+func TestRunNoArgsUnknownExecutable(t *testing.T) {
+	oldExe := executable
+	t.Cleanup(func() { executable = oldExe })
+	executable = func() (string, error) { return "", errors.New("no /proc") }
+
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("no args exited %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "unknown (no /proc)") || !strings.Contains(stdout.String(), "extract-relevant") {
+		t.Errorf("home view does not report the unknown path: %q", stdout.String())
+	}
+}
+
+// Defends --help against the home view: a bare run changed, an explicit
+// request for help did not.
+func TestRunHelpStillPrintsHelp(t *testing.T) {
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"help"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("%v exited %d; stderr=%q", args, code, stderr.String())
+		}
+		if !strings.Contains(stdout.String(), "Usage:") || !strings.Contains(stdout.String(), "Available Commands:") {
+			t.Errorf("%v did not print help: %q", args, stdout.String())
+		}
 	}
 }
 
