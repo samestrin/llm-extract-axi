@@ -32,6 +32,23 @@ A successful run that finds nothing exits 0 and carries `total: 0` and a `messag
 
 Exit codes: `0` on success, `1` when a command ran and failed (a failed fetch or model call, a partial result), `2` when the invocation itself is malformed (an unknown command or flag, a flag missing its argument). Retrying an exit 2 unchanged never helps.
 
+## AXI conformance
+
+This tool is built to the ten [AXI](https://axi.md) principles. The table records each as met or with a stated exception; the exceptions are deliberate, with the reason given.
+
+| # | Principle | Status |
+| --- | --- | --- |
+| 1 | Token-efficient output (TOON) | Met, with an exception: `--axi` emits TOON for `extract-links` and `extract-relevant`, but `fetch` ignores the flag and prints the raw body. Fetching is a byte pipe; TOON would wrap the page, not reduce it. |
+| 2 | Minimal default schemas (3–4 fields) | Exception: `extract-links` rows have five fields (`context`, `href`, `score`, `section`, `text`). All five are used for ranking, and there is no `--fields` flag. |
+| 3 | Content truncation with a size hint and `--full` | Exception: `fetch` prints the whole body by design — that is what it is for — and `--output FILE` is the way to keep a large page out of context. There is no truncation, size hint or `--full`. |
+| 4 | Pre-computed aggregates | Met: `extract-links` reports `total`; `extract-relevant` reports `total`, `total_files` and `processed_files`, and a partial directory run reports `<n> of <total> files failed`. |
+| 5 | Definitive empty states | Met: an empty success carries `total: 0` and a `message` ("no links found" / "no relevant content found"); a failure carries `error` and no total. |
+| 6 | Structured errors & exit codes | Met, with an exception: exit codes are 0/1/2 as documented above, and mid-run failures of `extract-links` and `extract-relevant` carry the `error` field on stdout. Failures before work starts (no API key, a bad URL, a failed `fetch --json`) report on stderr only. |
+| 7 | Ambient context (setup hook + Agent Skill) | Met: `llm-extract setup` installs a Claude Code SessionStart hook and Agent Skill (below). |
+| 8 | Content first | Met: a bare run shows the binary's path (`~` for home), a one-sentence description and the network/model table above. |
+| 9 | Contextual disclosure (`help[]` next steps) | Exception: no output carries `help[]` next-step lines. The commands are few and `--help` covers them; the next step is obvious from the output. |
+| 10 | Consistent way to get help | Met: `--help` on the root and every command, each listing the global `--axi` flag. |
+
 ### Claude Code setup
 
 `llm-extract setup` (run in a project, or with `--dir`) writes a SessionStart hook into `.claude/settings.json` and an Agent Skill into `.claude/skills/llm-extract/SKILL.md`. Other settings are kept, a second run changes nothing, and `--dry-run` shows what would be written. It never touches your home directory.
