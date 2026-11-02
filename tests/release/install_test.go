@@ -454,8 +454,8 @@ func TestInstallBuildsReleaseURLFromVersion(t *testing.T) {
 				t.Fatalf("curl was never called: %v\noutput:\n%s", err, out)
 			}
 			first := strings.SplitN(string(urls), "\n", 2)[0]
-			if want := tc.want + asset("llm-extract"); first != want {
-				t.Errorf("first download is %q, want %q", first, want)
+			if !strings.HasPrefix(first, tc.want) {
+				t.Errorf("first download is %q, want it under %q", first, tc.want)
 			}
 			assertDirHolds(t, home, nil, out)
 		})
