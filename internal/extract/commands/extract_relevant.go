@@ -73,6 +73,16 @@ const noRelevantMessage = "no relevant content found"
 // commands share it; each resets it at the start of a run.
 var llmBytesSent atomic.Int64
 
+// modelUse returns the model and byte count to report, or nothing when no
+// prompt was sent, so a run that never reached a model does not claim one.
+func modelUse(model string) (string, *int64) {
+	sent := llmBytesSent.Load()
+	if sent <= 0 {
+		return "", nil
+	}
+	return model, &sent
+}
+
 // isNone reports whether the model answered that nothing was relevant.
 func isNone(s string) bool {
 	t := strings.TrimSpace(s)
@@ -182,10 +192,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
-	if sent := llmBytesSent.Load(); sent > 0 {
-		result.Model = config.Model
-		result.BytesSent = &sent
-	}
+	result.Model, result.BytesSent = modelUse(config.Model)
 	if result.Error == "" {
 		total := len(result.ExtractedParts)
 		result.Total = &total

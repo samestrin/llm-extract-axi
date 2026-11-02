@@ -194,3 +194,42 @@ func TestExtractLinksFailureHasNoTotal(t *testing.T) {
 		t.Errorf("failed fetch should have error and no total (exit %d): %s", code, out)
 	}
 }
+
+// Defends against text mode dropping the model and byte count that --json
+// carries.
+func TestExtractLinksTextShowsModelAndBytesSent(t *testing.T) {
+	pointExtractRelevantAt(t, fakeLLM(t, func(string) string {
+		return `{"rankings":[{"index":0,"score":90}]}`
+	}))
+	t.Setenv("OPENAI_MODEL", "test-model-x")
+	_, out, _ := runCLI(t, "extract-links", "--url", linksPage(t), "--context", "start")
+	if !strings.Contains(out, "Model: test-model-x | Bytes sent: ") {
+		t.Errorf("text output lost model and bytes sent:\n%s", out)
+	}
+}
+
+// Defends against a URL run whose model answers NONE (or nothing) reporting
+// the sentinel as an extracted part and a total of 1.
+func TestExtractRelevantURLZeroResultIsExplicit(t *testing.T) {
+	for _, reply := range []string{"NONE", "", "  NONE\n"} {
+		pointExtractRelevantAt(t, fakeLLM(t, func(string) string { return reply }))
+		code, out, _ := runCLI(t, "extract-relevant", "--path", emptyPage(t), "--context", "c", "--json")
+		var got ExtractRelevantResult
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatal(err)
+		}
+		if code != 0 || len(got.ExtractedParts) != 0 || got.Total == nil || *got.Total != 0 || got.Message != noRelevantMessage {
+			t.Errorf("reply %q: zero result not explicit (exit %d): %s", reply, code, out)
+		}
+	}
+}
+
+// Defends against a run that never reached a model claiming one with
+// bytes_sent 0.
+func TestExtractRelevantNoModelCallReportsNoModel(t *testing.T) {
+	pointExtractRelevantAt(t, fakeLLM(t, func(string) string { return "x" }))
+	code, out, _ := runCLI(t, "extract-relevant", "--path", notFoundPage(t), "--context", "c", "--json")
+	if code == 0 || strings.Contains(out, `"model"`) || strings.Contains(out, "bytes_sent") {
+		t.Errorf("no model call was made, yet (exit %d): %s", code, out)
+	}
+}

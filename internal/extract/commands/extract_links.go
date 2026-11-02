@@ -157,10 +157,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			result.Message = noLinksMessage
 		}
 	}
-	if sent := llmBytesSent.Load(); sent > 0 {
-		result.Model = llmapi.GetAPIConfig().Model
-		result.BytesSent = &sent
-	}
+	result.Model, result.BytesSent = modelUse(llmapi.GetAPIConfig().Model)
 
 	if err := outputExtractLinksResult(cmd, result); err != nil {
 		return err

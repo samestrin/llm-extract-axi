@@ -27,6 +27,8 @@ Run `llm-extract` with no arguments to see this table, the path of the binary (h
 
 A failed fetch or a failed model call exits non-zero from both `extract-links` and `extract-relevant`, with the reason on stderr. The output is still printed and carries the error: an `ERROR: <reason>` line in text mode, the `error` field in `--json`. `extract-relevant` with no API key set fails before doing any work. A partial result is kept and says it is partial, but the exit is still non-zero: when `extract-links --context` ranking fails (for example no API key is set), every unranked heuristic link is printed after `ERROR: LLM ranking failed: <reason>`; when some files in an `extract-relevant` directory run fail, the extractions from the rest are printed and the error reads `<n> of <total> files failed (first: <file>: <reason>)`. Through `llm-extract-mcp` a non-zero exit is an error result carrying stderr, so the partial result is not returned there.
 
+A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"); a failed run carries `error` and no total. When a model ran, the `--json`, `--min` and `--axi` output reports `model` and `bytes_sent` (`m`/`bs` in `--min`); `extract-links` without `--context` omits both.
+
 Exit codes: `0` on success, `1` when a command ran and failed (a failed fetch or model call, a partial result), `2` when the invocation itself is malformed (an unknown command or flag, a flag missing its argument). Retrying an exit 2 unchanged never helps.
 
 ### Setting keys
