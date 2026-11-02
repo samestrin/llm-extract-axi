@@ -1,0 +1,78 @@
+name: release
+
+# A pushed v* tag tests, builds, checksums and publishes a release:
+# llm-extract and llm-extract-mcp for five platforms, and SHA256SUMS.txt, which
+# install.sh verifies every download against.
+#
+# A manual run (Actions > release > Run workflow), or a pull request that
+# changes this file or the build script, runs the same steps and publishes
+# nothing, so the release path can be proven before a tag is pushed. Its
+# binaries and SHA256SUMS.txt are kept as the run's "dist" artifact.
+#
+# Only the publish job can write to the repository, and it runs only on a tag
+# push. A manual run started from a tag does not publish.
+# tests/release/release_workflow_test.go guards all of this.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/release.yml', 'scripts/release-build.sh']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The end-to-end tests exec the binaries in ./build and fail without
+      # them, so they are built first. A release is never built from a commit
+      # whose tests fail.
+      - name: test
+        run: |
+          make build
+          env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_BASE_URL -u OPENAI_MODEL \
+            go test -race ./...
+
+      - name: build all platforms
+        run: |
+          # A tag stamps its own name. Anything else is not a release, so the
+          # version says so instead of claiming a branch name or "16/merge".
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="$GITHUB_REF_NAME"
+          else
+            VERSION="dev-${GITHUB_SHA::12}"
+          fi
+          scripts/release-build.sh "$VERSION" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
