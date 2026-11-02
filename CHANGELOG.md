@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A malformed invocation (an unknown command or flag, a flag missing its argument or given a bad value, a required flag not set) exits 2; a command that ran and failed still exits 1. Both used to exit 1, so a caller could not tell a typo from a failure.
 - `extract-links` and `extract-relevant` exit non-zero when a fetch or model call fails, instead of printing the error and exiting 0. This includes an `extract-relevant` directory with no suitable files, already reported as an error.
 - When `extract-links --context` ranking fails, every heuristic link is still printed after the error, in text mode too, not only the first 100.
 - An `extract-relevant` directory run with some failed files keeps the others' extractions and reports how many failed, where before a failed file was dropped silently.

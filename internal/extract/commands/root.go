@@ -55,7 +55,9 @@ func Execute() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-// run executes the command tree once and returns the process exit code.
+// run executes the command tree once and returns the process exit code: 2 for
+// a malformed invocation such as an unknown flag or command, 1 for a command
+// that ran and failed. output.ExitCodeFor draws that line.
 func run(args []string, stdout, stderr io.Writer) int {
 	// RootCmd is a package singleton and pflag leaves a flag untouched when it
 	// is absent, so a second in-process run would inherit the first one's
@@ -67,7 +69,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	RootCmd.SetErr(stderr)
 	if err := RootCmd.Execute(); err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+		return output.ExitCodeFor(err)
 	}
 	return 0
 }
