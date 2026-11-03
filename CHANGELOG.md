@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-03
+
 ### Fixed
 
 - A malformed invocation (an unknown command or flag, a flag missing its argument or given a bad value, a required flag not set) exits 2; a command that ran and failed still exits 1. Both used to exit 1, so a caller could not tell a typo from a failure.
