@@ -155,7 +155,7 @@ func (f *Fetcher) Fetch(rawURL string) *Result {
 	var res *Result
 	for attempt := 0; attempt <= retries; attempt++ {
 		res = f.once(client, rawURL)
-		if res.Err == nil || errors.Is(res.Err, ErrChallenge) || (res.Status > 0 && res.Status < 500) {
+		if res.Err == nil || errors.Is(res.Err, ErrChallenge) || errors.Is(res.Err, ErrTooLarge) || (res.Status > 0 && res.Status < 500) {
 			return res
 		}
 		if attempt < retries {
@@ -187,13 +187,23 @@ func (f *Fetcher) once(client *http.Client, rawURL string) *Result {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, readErr := io.ReadAll(resp.Body)
+	// Read at most one byte past the cap: if that byte is present the body is
+	// larger than the cap, and reading it is an error, never a truncated
+	// success. LimitReader also bounds memory for a huge or endless body.
+	limit := f.maxBytes()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
 	res.Status = resp.StatusCode
 	res.FinalURL = resp.Request.URL.String()
 	res.ContentType = resp.Header.Get("Content-Type")
 	res.cfMitigated = resp.Header.Get("cf-mitigated") != ""
 	if readErr != nil {
 		res.Err = fmt.Errorf("failed to read body: %w", readErr)
+		return res
+	}
+	if len(body) > limit {
+		// A body over the cap is a failed fetch: report the error and carry no
+		// partial body, so a caller is never handed a truncated page as success.
+		res.Err = fmt.Errorf("%w: body exceeds %d-byte cap", ErrTooLarge, limit)
 		return res
 	}
 	res.Body = body
