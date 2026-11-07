@@ -1,17 +1,21 @@
 #!/bin/sh
-# Pre-commit hook to run gofmt and go vet
+# Pre-commit hook: CHECK formatting and run go vet, and fail. It does not
+# rewrite the working tree or stage files.
+#
+# This hook used to run `gofmt -s -w .` and `git add` the files it rewrote. That
+# modified and staged the working tree on every commit without the author asking
+# for it, so a commit could silently pick up edits — and files — the author never
+# intended to include. It now only checks, the same way CI's gofmt step does
+# (`gofmt -s -l .`), and tells the author how to fix it.
 
-# Run gofmt and auto-fix
-UNFORMATTED=$(gofmt -s -l . 2>/dev/null | grep -v vendor)
+UNFORMATTED=$(gofmt -s -l .)
 if [ -n "$UNFORMATTED" ]; then
-    echo "Auto-formatting Go files..."
-    gofmt -s -w .
-    git add $UNFORMATTED
-    echo "Formatted: $UNFORMATTED"
+    echo "These files need gofmt -s. Run 'gofmt -s -w <file>' on each, then git add it:"
+    echo "$UNFORMATTED"
+    exit 1
 fi
 
-# Run go vet
-if ! go vet ./... 2>/dev/null; then
+if ! go vet ./...; then
     echo "go vet failed. Please fix the issues."
     exit 1
 fi
