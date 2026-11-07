@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -382,5 +383,23 @@ func TestFetchChallengeOverCapStillChallenge(t *testing.T) {
 	res := New(&Config{Timeout: 5, MaxRetries: 2, UserAgent: "t", MaxBodyBytes: 100}).Fetch(srv.URL)
 	if !errors.Is(res.Err, ErrChallenge) {
 		t.Fatalf("over-cap challenge lost: want ErrChallenge, got %v", res.Err)
+	}
+}
+
+// Defends against an int64 overflow in the cap: at MaxBodyBytes == the largest
+// int, "limit+1" wraps negative, io.LimitReader then reads zero bytes, and an
+// over-cap (or any) body would be returned as an EMPTY success. A normal body
+// must still come back whole at the extreme cap.
+func TestFetchHugeCapDoesNotOverflow(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: 0, UserAgent: "t", MaxBodyBytes: math.MaxInt64}).Fetch(srv.URL)
+	if res.Err != nil {
+		t.Fatalf("huge cap errored: %v", res.Err)
+	}
+	if string(res.Body) != "ok" {
+		t.Fatalf("huge cap lost the body (overflow): %q", res.Body)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -189,9 +190,15 @@ func (f *Fetcher) once(client *http.Client, rawURL string) *Result {
 
 	// Read at most one byte past the cap: if that byte is present the body is
 	// larger than the cap, so a good page cannot be returned whole. LimitReader
-	// bounds memory even when the server streams a huge or endless body.
+	// bounds memory even when the server streams a huge or endless body. Guard
+	// the +1 against int64 overflow at the maximum cap, which would otherwise
+	// wrap negative and make LimitReader return an empty success.
 	limit := f.maxBytes()
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, int64(limit)+1))
+	readN := int64(limit)
+	if readN < math.MaxInt64 {
+		readN++
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, readN))
 	res.Status = resp.StatusCode
 	res.FinalURL = resp.Request.URL.String()
 	res.ContentType = resp.Header.Get("Content-Type")
