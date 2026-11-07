@@ -346,3 +346,41 @@ func TestLoadConfigMaxBytes(t *testing.T) {
 		}
 	}
 }
+
+// Defends the error precedence: when a non-2xx response also exceeds the cap,
+// the HTTP status is reported, not "too large", so a blocked or missing page is
+// never mislabeled. (The cap error only overrides a would-be-successful 2xx.)
+func TestFetchNon2xxOverCapReportsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(strings.Repeat("e", 200)))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: 0, UserAgent: "t", MaxBodyBytes: 100}).Fetch(srv.URL)
+	if res.Err == nil {
+		t.Fatal("404 over cap reported success")
+	}
+	if errors.Is(res.Err, ErrTooLarge) {
+		t.Errorf("404 mislabeled as a size-cap error: %v", res.Err)
+	}
+	if !strings.Contains(res.Err.Error(), "404") {
+		t.Errorf("error does not name the status: %v", res.Err)
+	}
+	if res.Body != nil || res.Bytes != 0 {
+		t.Errorf("failed fetch kept a body: %+v", res)
+	}
+}
+
+// Defends challenge detection surviving the cap: a Cloudflare interstitial
+// that happens to be larger than the cap is still reported as needing a
+// browser, because markers/status are checked on the head that was read.
+func TestFetchChallengeOverCapStillChallenge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("<div id=\"challenge-platform\"></div>" + strings.Repeat("p", 200)))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: 2, UserAgent: "t", MaxBodyBytes: 100}).Fetch(srv.URL)
+	if !errors.Is(res.Err, ErrChallenge) {
+		t.Fatalf("over-cap challenge lost: want ErrChallenge, got %v", res.Err)
+	}
+}
