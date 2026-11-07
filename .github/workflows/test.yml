@@ -50,6 +50,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Shell tests for the build/CI scripts (the coverage gate's failure
+      # branches). Its own step so a regression in the gate is red here, not
+      # lost inside the Go suite.
+      - name: coverage gate shell tests
+        run: make test-scripts
+
       # The end-to-end tests exec the binaries in ./build. They fail rather
       # than skip when a binary is missing, so this step must come first.
       - name: build the binaries for the end-to-end tests
