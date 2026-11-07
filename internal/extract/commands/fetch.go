@@ -22,6 +22,7 @@ var (
 	fetchTimeout   int
 	fetchRetries   int
 	fetchUserAgent string
+	fetchMaxBytes  int
 	fetchJSON      bool
 )
 
@@ -53,6 +54,9 @@ Configuration is read from environment variables (flags override them):
   FETCH_TIMEOUT       Per-attempt timeout in seconds (default 30)
   FETCH_MAX_RETRIES   Retries on connection errors and 5xx (default 2)
   FETCH_USER_AGENT    Override the request User-Agent
+  FETCH_MAX_BYTES     Maximum response body size in bytes (default 16777216)
+
+A response body larger than the cap is an error, never a truncated page.
 
 Use --output to save the body to a file instead of stdout.`,
 		Args: cobra.ExactArgs(1),
@@ -63,6 +67,7 @@ Use --output to save the body to a file instead of stdout.`,
 	cmd.Flags().IntVar(&fetchTimeout, "timeout", fetch.DefaultTimeout, "Per-attempt timeout in seconds")
 	cmd.Flags().IntVar(&fetchRetries, "retries", fetch.DefaultMaxRetries, "Retries on connection errors and 5xx")
 	cmd.Flags().StringVar(&fetchUserAgent, "user-agent", "", "Override the request User-Agent")
+	cmd.Flags().IntVar(&fetchMaxBytes, "max-bytes", fetch.DefaultMaxBodyBytes, "Maximum response body size in bytes; a larger body is an error")
 	cmd.Flags().BoolVar(&fetchJSON, "json", false, "Output as JSON")
 	return cmd
 }
@@ -85,6 +90,9 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	}
 	if fetchUserAgent != "" {
 		cfg.UserAgent = fetchUserAgent
+	}
+	if cmd.Flags().Changed("max-bytes") {
+		cfg.MaxBodyBytes = fetchMaxBytes
 	}
 
 	res := fetch.New(cfg).Fetch(rawURL)
