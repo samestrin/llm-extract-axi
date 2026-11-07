@@ -211,6 +211,9 @@ func Run(ctx context.Context, bin, name string, raw json.RawMessage) *mcp.CallTo
 		if msg == "" {
 			msg = err.Error()
 		}
+		if out := strings.TrimSpace(stdout.String()); out != "" {
+			msg = msg + "\n" + out
+		}
 		return errResult(fmt.Sprintf("llm-extract %s failed: %s", cliArgs[0], msg))
 	}
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: stdout.String()}}}
