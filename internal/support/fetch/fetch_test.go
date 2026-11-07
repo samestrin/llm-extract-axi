@@ -252,3 +252,97 @@ func TestFetchTruncatedBodyIsError(t *testing.T) {
 		t.Errorf("failed result carries data: %+v", res)
 	}
 }
+
+// Defends the size cap: a body over the cap is an error that names the cap,
+// carries no body, and is not retried — never a truncated success. This is the
+// bug it prevents: io.ReadAll reading an unbounded response fully into memory.
+func TestFetchBodyOverCapIsError(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "text/plain")
+		_, _ = w.Write([]byte(strings.Repeat("x", 200)))
+	}))
+	defer srv.Close()
+	f := New(&Config{Timeout: 5, MaxRetries: 2, UserAgent: "t", MaxBodyBytes: 100})
+	f.sleep = func(int) {}
+	res := f.Fetch(srv.URL)
+	if !errors.Is(res.Err, ErrTooLarge) {
+		t.Fatalf("over-cap body not reported as ErrTooLarge: %+v", res)
+	}
+	if !strings.Contains(res.Err.Error(), "100") {
+		t.Errorf("error does not name the cap: %v", res.Err)
+	}
+	if res.Body != nil || res.Bytes != 0 {
+		t.Errorf("over-cap result carries a truncated body: bytes=%d len=%d", res.Bytes, len(res.Body))
+	}
+	if res.Status != 200 {
+		t.Errorf("Status = %d, want the underlying 200", res.Status)
+	}
+	if hits != 1 {
+		t.Errorf("over-cap body was retried: %d hits", hits)
+	}
+}
+
+// Defends the cap boundary: a body exactly at the cap is the whole body and
+// succeeds, so the limit is inclusive rather than off-by-one.
+func TestFetchBodyAtCapSucceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("y", 100)))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: 0, UserAgent: "t", MaxBodyBytes: 100}).Fetch(srv.URL)
+	if res.Err != nil {
+		t.Fatalf("body at the cap errored: %v", res.Err)
+	}
+	if res.Bytes != 100 || len(res.Body) != 100 {
+		t.Errorf("body at cap truncated: bytes=%d len=%d", res.Bytes, len(res.Body))
+	}
+}
+
+// Defends a body just under the cap: it comes back whole.
+func TestFetchBodyJustUnderCapSucceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("z", 99)))
+	}))
+	defer srv.Close()
+	res := New(&Config{Timeout: 5, MaxRetries: 0, UserAgent: "t", MaxBodyBytes: 100}).Fetch(srv.URL)
+	if res.Err != nil || res.Bytes != 99 {
+		t.Errorf("under-cap body wrong: %+v", res)
+	}
+}
+
+// Defends the default cap: a zero-value MaxBodyBytes resolves to the default
+// (not "read without a limit" and not an error), so the bounded-memory
+// guarantee holds for every fetcher including New(nil).
+func TestFetchZeroMaxBytesUsesDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer srv.Close()
+	f := New(&Config{Timeout: 5, MaxRetries: 0, UserAgent: "t"})
+	if got := f.maxBytes(); got != DefaultMaxBodyBytes {
+		t.Errorf("maxBytes() = %d, want default %d", got, DefaultMaxBodyBytes)
+	}
+	if res := f.Fetch(srv.URL); res.Err != nil || string(res.Body) != "ok" {
+		t.Errorf("default cap broke a normal body: %+v", res)
+	}
+	if g := New(nil); g.maxBytes() != DefaultMaxBodyBytes {
+		t.Errorf("New(nil) maxBytes() = %d, want default %d", g.maxBytes(), DefaultMaxBodyBytes)
+	}
+}
+
+// Defends LoadConfig's FETCH_MAX_BYTES: a usable value applies, a missing or
+// non-positive or junk value keeps the default.
+func TestLoadConfigMaxBytes(t *testing.T) {
+	t.Setenv("FETCH_MAX_BYTES", "1024")
+	if c := LoadConfig(); c.MaxBodyBytes != 1024 {
+		t.Errorf("env not applied: %+v", c)
+	}
+	for _, junk := range []string{"", "abc", "0", "-5"} {
+		t.Setenv("FETCH_MAX_BYTES", junk)
+		if c := LoadConfig(); c.MaxBodyBytes != DefaultMaxBodyBytes {
+			t.Errorf("FETCH_MAX_BYTES=%q kept %d, want default %d", junk, c.MaxBodyBytes, DefaultMaxBodyBytes)
+		}
+	}
+}

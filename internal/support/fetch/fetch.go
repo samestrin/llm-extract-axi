@@ -21,6 +21,10 @@ const (
 	DefaultTimeout    = 30 // seconds, per attempt
 	DefaultMaxRetries = 2
 	DefaultUserAgent  = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+	// DefaultMaxBodyBytes caps how much of a response body is read into
+	// memory. A larger body is an error (ErrTooLarge), never a truncated
+	// success. Override with FETCH_MAX_BYTES or --max-bytes.
+	DefaultMaxBodyBytes = 16 << 20 // 16 MiB
 )
 
 // Tier identifies which path produced a result. Only the direct tier exists.
@@ -33,17 +37,26 @@ const TierDirect Tier = "direct"
 // browser can pass.
 var ErrChallenge = errors.New("page needs a browser (challenge page)")
 
+// ErrTooLarge marks a response body that exceeds the configured size cap. It
+// is reported as an error so a caller is never handed a silently truncated
+// body and told it is the whole page.
+var ErrTooLarge = errors.New("response body exceeds size cap")
+
 // Config controls a Fetcher.
 type Config struct {
 	Timeout    int // seconds per attempt; <= 0 means DefaultTimeout
 	MaxRetries int // retries on transport errors and 5xx
 	UserAgent  string
+	// MaxBodyBytes caps the response body read into memory. A body over the
+	// cap is an ErrTooLarge error, not a truncated success. <= 0 means
+	// DefaultMaxBodyBytes.
+	MaxBodyBytes int
 }
 
-// LoadConfig reads FETCH_TIMEOUT, FETCH_MAX_RETRIES and FETCH_USER_AGENT.
-// A value that is missing or not usable keeps its default.
+// LoadConfig reads FETCH_TIMEOUT, FETCH_MAX_RETRIES, FETCH_USER_AGENT and
+// FETCH_MAX_BYTES. A value that is missing or not usable keeps its default.
 func LoadConfig() *Config {
-	c := &Config{Timeout: DefaultTimeout, MaxRetries: DefaultMaxRetries, UserAgent: DefaultUserAgent}
+	c := &Config{Timeout: DefaultTimeout, MaxRetries: DefaultMaxRetries, UserAgent: DefaultUserAgent, MaxBodyBytes: DefaultMaxBodyBytes}
 	if n, err := strconv.Atoi(os.Getenv("FETCH_TIMEOUT")); err == nil && n > 0 {
 		c.Timeout = n
 	}
@@ -52,6 +65,9 @@ func LoadConfig() *Config {
 	}
 	if ua := os.Getenv("FETCH_USER_AGENT"); ua != "" {
 		c.UserAgent = ua
+	}
+	if n, err := strconv.Atoi(os.Getenv("FETCH_MAX_BYTES")); err == nil && n > 0 {
+		c.MaxBodyBytes = n
 	}
 	return c
 }
@@ -117,6 +133,15 @@ func (f *Fetcher) timeout() time.Duration {
 		t = DefaultTimeout
 	}
 	return time.Duration(t) * time.Second
+}
+
+// maxBytes resolves the response body cap: a non-positive value falls back to
+// the default, so a zero-value Config never means "read without a limit".
+func (f *Fetcher) maxBytes() int {
+	if f.cfg.MaxBodyBytes <= 0 {
+		return DefaultMaxBodyBytes
+	}
+	return f.cfg.MaxBodyBytes
 }
 
 // Fetch retrieves rawURL with a direct GET. Transport errors and 5xx are
