@@ -1,4 +1,4 @@
-.PHONY: build build-all test test-race test-cover cover-gate lint vet fmt golangci install clean hooks
+.PHONY: build build-all test test-race test-cover test-scripts cover-gate lint vet fmt golangci install clean hooks
 
 MODULE    := github.com/samestrin/llm-extract-axi
 BUILD_DIR := build
@@ -46,8 +46,22 @@ test-cover: build
 	go test -coverprofile=coverage.txt -covermode=atomic ./...
 	go tool cover -func=coverage.txt | tail -1
 
-# The same 80% gate CI enforces, run against coverage.txt.
-cover-gate: test-cover
+# Shell tests for the build/CI scripts (the coverage gate's failure branches).
+# Self-contained: it builds a throwaway module in a temp dir and makes no
+# network call. Wired into CI as its own step.
+test-scripts:
+	./scripts/coverage-gate_test.sh
+
+# The same 80% gate CI enforces. Measured the way CI measures it and the way
+# AGENTS.md prescribes: cold (`go clean -testcache`) and with the LLM
+# environment stripped, so a cached run cannot write a partial profile that
+# reads low, and an exported API key cannot push a test down a path that the
+# gated number then counts. It builds first because the end-to-end tests exec
+# ./build. It does NOT reuse test-cover, which stays a warm interactive run.
+cover-gate: build
+	go clean -testcache
+	env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_BASE_URL -u OPENAI_MODEL \
+		go test -coverprofile=coverage.txt -covermode=atomic ./...
 	./scripts/coverage-gate.sh coverage.txt 80
 
 lint: vet fmt golangci
