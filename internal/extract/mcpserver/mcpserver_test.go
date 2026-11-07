@@ -168,6 +168,24 @@ func TestMissingRequiredArgumentsAllTools(t *testing.T) {
 	}
 }
 
+// Defends the partial stdout rule: when the CLI writes content to stdout before
+// exiting non-zero (a partial result), the MCP error result must carry that stdout
+// so an MCP caller sees what the CLI produced, not only the error on stderr.
+func TestNonZeroExitIncludesPartialStdout(t *testing.T) {
+	bin := fakeCLI(t, `echo "partial content here"; echo "something went wrong" >&2; exit 1`)
+	r := Run(context.Background(), bin, "extract_links", json.RawMessage(`{"url":"http://x"}`))
+	got := text(t, r.Content)
+	if !r.IsError {
+		t.Fatal("non-zero exit must be an error")
+	}
+	if !strings.Contains(got, "partial content here") {
+		t.Errorf("error result must include partial stdout, got: %s", got)
+	}
+	if !strings.Contains(got, "something went wrong") {
+		t.Errorf("error result must include stderr, got: %s", got)
+	}
+}
+
 // Defends the error text when the CLI dies without writing to stderr: it must
 // still name the subcommand and carry a reason.
 func TestNonZeroExitWithEmptyStderr(t *testing.T) {
