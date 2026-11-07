@@ -117,9 +117,14 @@ API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
 		Args: cobra.NoArgs,
-		// The root already silences usage for the binary; this covers the
-		// command run on its own, as the tests do, where a runtime failure
-		// would otherwise print usage after the JSON.
+		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
+		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
+		// Execute() was called on. The unit tests build this command fresh with
+		// newExtractRelevantCmd() and call cmd.Execute() directly, so there is
+		// no parent root and c == cmd -- the field is the only thing standing
+		// between a runtime failure and a Usage dump after the JSON. The root's
+		// own flag silences usage for the shipped binary; it cannot reach a
+		// parentless run. Do not remove.
 		SilenceUsage: true,
 		RunE:         runExtractRelevant,
 	}
@@ -218,7 +223,7 @@ func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath st
 		return fmt.Errorf("failed to read file: %w", err)
 	}
 
-	extracted, err := extractRelevantContent(client, string(content), extractRelevantContext, extractRelevantTimeout)
+	extracted, err := extractRelevantContent(cmd.Context(), client, string(content), extractRelevantContext, extractRelevantTimeout)
 	if err != nil {
 		return err
 	}
@@ -244,7 +249,7 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 		return fmt.Errorf("failed to fetch URL: %w", err)
 	}
 
-	extracted, err := extractRelevantContent(client, content, extractRelevantContext, extractRelevantTimeout)
+	extracted, err := extractRelevantContent(cmd.Context(), client, content, extractRelevantContext, extractRelevantTimeout)
 	if err != nil {
 		return err
 	}
@@ -434,7 +439,11 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		items[i] = f
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(extractRelevantTimeout*len(files))*time.Second)
+	// The whole-run context is derived from the command's own context, so a
+	// cancel at the top (a signal the root wires up, or a test) aborts every
+	// per-file model call too; the per-file timeout is layered on within
+	// extractRelevantContent. cobra guarantees cmd.Context() is non-nil.
+	ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(extractRelevantTimeout*len(files))*time.Second)
 	defer cancel()
 
 	results := processor.ProcessItems(ctx, items, func(ctx context.Context, c *llmapi.LLMClient, item interface{}) (interface{}, error) {
@@ -448,7 +457,7 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		relPath, _ := filepath.Rel(dirPath, filePath)
 		fileContext := fmt.Sprintf("File: %s\n\nContext: %s", relPath, extractRelevantContext)
 
-		extracted, err := extractRelevantContent(c, string(content), fileContext, extractRelevantTimeout)
+		extracted, err := extractRelevantContent(ctx, c, string(content), fileContext, extractRelevantTimeout)
 		if err != nil {
 			return nil, err
 		}
@@ -487,7 +496,13 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 	return nil
 }
 
-func extractRelevantContent(client *llmapi.LLMClient, content, context string, timeout int) (string, error) {
+// extractRelevantContent sends one extraction prompt and returns the model's
+// answer. It takes the caller's run context so a whole-run deadline or
+// cancellation reaches the model request; the per-call timeout is layered on
+// top with WithTimeout, so the effective bound is whichever fires first. Every
+// caller passes a non-nil context: cobra defaults cmd.Context() to
+// context.Background() on Execute, and processDirectory derives a child.
+func extractRelevantContent(ctx context.Context, client *llmapi.LLMClient, content, contextText string, timeout int) (string, error) {
 	systemPrompt := `You are a content extraction assistant. Your task is to extract only the parts of the provided content that are relevant to the given context.
 
 Rules:
@@ -498,7 +513,7 @@ Rules:
 5. Keep extracted sections in their original order
 6. Include enough surrounding context to make the extracted content understandable`
 
-	userPrompt := fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n%s", context, content)
+	userPrompt := fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n%s", contextText, content)
 
 	// Truncate content if too long (API limit considerations)
 	if len(userPrompt) > 30000 {
@@ -506,7 +521,9 @@ Rules:
 	}
 
 	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
-	return client.CompleteWithSystem(systemPrompt, userPrompt, time.Duration(timeout)*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	return client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
 }
 
 func shouldExcludeDir(name string) bool {
@@ -583,10 +600,14 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 		var outputContent string
 
 		if extractRelevantJSON || extractRelevantMinimal {
-			// Use formatter to get JSON output
+			// Use formatter to get JSON output. A Print failure must stop the
+			// run before the file is touched: writing an empty file and exiting
+			// 0 is reporting success for a render that did not succeed.
 			var buf bytes.Buffer
 			formatter := output.New(true, extractRelevantMinimal, &buf)
-			_ = formatter.Print(finalResult, nil)
+			if printErr := formatter.Print(finalResult, nil); printErr != nil {
+				return fmt.Errorf("failed to format output: %w", printErr)
+			}
 			outputContent = buf.String()
 		} else {
 			outputContent = plainExtractResult(result)
