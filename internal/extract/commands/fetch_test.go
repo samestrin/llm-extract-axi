@@ -165,3 +165,66 @@ func TestFetchCmdNegativeRetries(t *testing.T) {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }
+
+// Defends the --max-bytes flag end to end: a body over the cap exits non-zero,
+// names the cap, prints nothing to stdout, and writes no --output file. It is
+// an error, never a truncated success saved to disk.
+func TestFetchCmdMaxBytesOverCapIsError(t *testing.T) {
+	srv := pageServer(t, 200, strings.Repeat("x", 200))
+	code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "100")
+	if code == 0 || out != "" {
+		t.Fatalf("over-cap exited %d with out=%q", code, out)
+	}
+	if !strings.Contains(errOut, "cap") || !strings.Contains(errOut, "100") {
+		t.Errorf("error does not name the size cap: %q", errOut)
+	}
+	// --json must not emit a partial payload either.
+	if code, out, _ := runFetchCmd(t, srv.URL, "--max-bytes", "100", "--json"); code == 0 || out != "" {
+		t.Errorf("--json over-cap produced output: code=%d out=%q", code, out)
+	}
+	// --output must leave no file behind.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "page.html")
+	if code, _, _ := runFetchCmd(t, srv.URL, "--max-bytes", "100", "--output", path); code == 0 {
+		t.Errorf("--output over-cap exited 0")
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf("over-cap fetch wrote a partial output file: %s", path)
+	}
+}
+
+// Defends a body under the cap still succeeds, so the flag is not a blanket
+// failure: the same 200-byte page with a larger cap prints whole.
+func TestFetchCmdMaxBytesUnderCapSucceeds(t *testing.T) {
+	srv := pageServer(t, 200, strings.Repeat("y", 200))
+	code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "500")
+	if code != 0 || out != strings.Repeat("y", 200) {
+		t.Fatalf("under-cap body wrong: code=%d out=%d bytes err=%q", code, len(out), errOut)
+	}
+}
+
+// Defends the flag overriding the env: FETCH_MAX_BYTES caps the body even
+// without --max-bytes, proving the command threads the configured cap.
+func TestFetchCmdMaxBytesEnvOverride(t *testing.T) {
+	srv := pageServer(t, 200, strings.Repeat("z", 150))
+	t.Setenv("FETCH_MAX_BYTES", "100")
+	code, out, errOut := runFetchCmd(t, srv.URL)
+	if code == 0 || out != "" || !strings.Contains(errOut, "cap") {
+		t.Errorf("env cap not applied: code=%d out=%q err=%q", code, out, errOut)
+	}
+	// The flag beats the env: --max-bytes 500 fetches the same page.
+	code, out, errOut = runFetchCmd(t, srv.URL, "--max-bytes", "500")
+	if code != 0 || len(out) != 150 {
+		t.Errorf("flag did not override env: code=%d out=%d bytes err=%q", code, len(out), errOut)
+	}
+}
+
+// Defends --max-bytes 0 falling back to the default rather than erroring or
+// reading nothing, matching how --timeout/--retries treat a non-positive value.
+func TestFetchCmdMaxBytesZeroUsesDefault(t *testing.T) {
+	srv := pageServer(t, 200, "small")
+	code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "0")
+	if code != 0 || out != "small" {
+		t.Fatalf("--max-bytes 0 broke a normal body: code=%d out=%q err=%q", code, out, errOut)
+	}
+}

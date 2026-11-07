@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `llm-extract fetch` now caps how much of a response body is read into memory. A body larger than the cap is an error (`response body exceeds size cap`), never a truncated page reported as success. The cap defaults to 16 MiB and is set with `--max-bytes` or the `FETCH_MAX_BYTES` environment variable; a non-positive value falls back to the default. A blocked or non-2xx response still reports its HTTP status or challenge error rather than the size cap, and no partial `--output` file is written. _(technical debt: `io.ReadAll` was unbounded.)_
+
 ### Fixed
 
 - `llm-extract-mcp`: a non-zero CLI exit now includes partial stdout in the error result when non-empty, so an MCP caller receives partial results (e.g. kept heuristic links or successful directory files) alongside the error reason. Previously only stderr was returned.
