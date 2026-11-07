@@ -439,10 +439,12 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		items[i] = f
 	}
 
-	// The whole-run context is derived from the command's own context, so a
-	// cancel at the top (a signal the root wires up, or a test) aborts every
-	// per-file model call too; the per-file timeout is layered on within
-	// extractRelevantContent. cobra guarantees cmd.Context() is non-nil.
+	// The whole-run context is derived from the command's own context, so when
+	// the caller supplies a cancellable or deadline-bound context (an embedding
+	// caller or a test; the shipped CLI does not wire a signal handler today) a
+	// cancel at the top aborts every per-file model call too. The per-file
+	// timeout is layered on within extractRelevantContent. cobra guarantees
+	// cmd.Context() is non-nil.
 	ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(extractRelevantTimeout*len(files))*time.Second)
 	defer cancel()
 

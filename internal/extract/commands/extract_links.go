@@ -101,9 +101,14 @@ Examples:
   llm-extract extract-links --url https://example.com/docs --context "authentication"
   llm-extract extract-links --url https://api.example.com --context "rate limiting" --json`,
 		Args: cobra.NoArgs,
-		// The root already silences usage for the binary; this covers the
-		// command run on its own, as the tests do, where a runtime failure
-		// would otherwise print usage after the JSON.
+		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
+		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
+		// Execute() was called on. The unit tests build this command fresh with
+		// newExtractLinksCmd() and call cmd.Execute() directly, so there is no
+		// parent root and c == cmd -- the field is the only thing standing
+		// between a runtime failure and a Usage dump after the JSON. The root's
+		// own flag silences usage for the shipped binary; it cannot reach a
+		// parentless run. Do not remove.
 		SilenceUsage: true,
 		RunE:         runExtractLinks,
 	}

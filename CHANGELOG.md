@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `llm-extract-mcp`: a non-zero CLI exit now includes partial stdout in the error result when non-empty, so an MCP caller receives partial results (e.g. kept heuristic links or successful directory files) alongside the error reason. Previously only stderr was returned.
 - The `make hooks` pre-commit hook no longer rewrites Go files with `gofmt -s -w` or stages them with `git add`; it only checks formatting and `go vet` and fails, so committing can no longer sweep in edits or files the author never staged. Fix formatting yourself with `gofmt -s -w <file>`. (epic 01)
 - `make cover-gate` now measures coverage the way CI and AGENTS.md prescribe — cold (`go clean -testcache`) and with the LLM environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`) stripped — so the gated number can no longer be inflated by an exported API key or deflated by a cached partial run. (epic 01)
+- `extract-relevant` on a directory now honours its run context: a cancellation or a whole-run deadline reaches every model call instead of being ignored, and the per-file `--timeout` still bounds each call individually. `extract-relevant -o <file> --json` no longer writes the file and exits 0 when the output fails to render; a format error is now reported and the file is left untouched.
 
 ## [1.0.0] - 2026-11-03
 
