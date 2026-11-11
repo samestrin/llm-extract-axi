@@ -21,6 +21,16 @@ import (
 // stamping main would leave `llm-extract --version` reporting this default.
 var Version = "dev"
 
+// BareVersion returns v without a leading "v", so a `git describe` stamp such
+// as v1.0.1 prints as 1.0.1.
+func BareVersion(v string) string { return strings.TrimPrefix(v, "v") }
+
+// IsVersionFlag reports whether arg is one of the version flags, -v, -V or
+// --version.
+func IsVersionFlag(arg string) bool {
+	return arg == "-v" || arg == "-V" || arg == "--version"
+}
+
 // GlobalAXIOutput selects TOON output. It reaches every command through
 // output.SetDefaultAXI rather than a per-command flag, because each command
 // builds its own formatter with output.New(json, min, w).
@@ -121,7 +131,14 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// is absent, so a second in-process run would inherit the first one's
 	// flags. The shipped binary runs once per process; tests do not.
 	resetFlags(RootCmd)
-	RootCmd.Version = Version
+	// A lone version flag is answered here, because cobra's own flag knows
+	// only --version and would reject -V.
+	if len(args) == 1 && IsVersionFlag(args[0]) {
+		_, _ = fmt.Fprintln(stdout, BareVersion(Version))
+		return 0
+	}
+	RootCmd.Version = BareVersion(Version)
+	RootCmd.SetVersionTemplate("{{.Version}}\n")
 	RootCmd.SetArgs(args)
 	RootCmd.SetOut(stdout)
 	RootCmd.SetErr(stderr)

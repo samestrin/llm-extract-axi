@@ -191,16 +191,15 @@ func TestReleaseBuildStampsVersionAndWritesChecksums(t *testing.T) {
 	if err != nil {
 		t.Fatalf("built llm-extract --version: %v\n%s", err, got)
 	}
-	if strings.TrimSpace(string(got)) != "llm-extract version v9.8.7" {
-		t.Errorf("built CLI reports %q, want the tag v9.8.7", strings.TrimSpace(string(got)))
+	if strings.TrimSpace(string(got)) != "9.8.7" {
+		t.Errorf("built CLI reports %q, want the bare version 9.8.7", strings.TrimSpace(string(got)))
 	}
-	// The server has no --version; the stamped string is in the binary.
-	mcp, err := os.ReadFile(filepath.Join(dist, "llm-extract-mcp"+suffix))
+	mcp, err := exec.Command(filepath.Join(dist, "llm-extract-mcp"+suffix), "--version").CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("built llm-extract-mcp --version: %v\n%s", err, mcp)
 	}
-	if !strings.Contains(string(mcp), "v9.8.7") {
-		t.Error("built llm-extract-mcp does not carry the tag as its version")
+	if strings.TrimSpace(string(mcp)) != "9.8.7" {
+		t.Errorf("built MCP server reports %q, want the bare version 9.8.7", strings.TrimSpace(string(mcp)))
 	}
 
 	want := map[string]bool{}
