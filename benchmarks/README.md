@@ -8,13 +8,13 @@ On the committed fixture, a 15,411-byte documentation page:
 
 ```
 raw page      4240 tokens
---axi output  1652 tokens
-ratio         2.6x (raw / --axi)
+--axi output  1435 tokens
+ratio         3.0x (raw / --axi)
 ```
 
-`llm-extract extract-links --axi`, in its default heuristic mode, gives an agent every link on the page, ranked, with its text, section and context, in **2.6x fewer tokens** than the page itself.
+`llm-extract extract-links --axi`, in its default heuristic mode, gives an agent every link on the page, ranked, with its text, score and section, in **3.0x fewer tokens** than the page itself.
 
-Measured on 2026-11-02 with the counter described below. Checked separately against tiktoken: 4503 vs 1733 tokens with `cl100k_base`, 4527 vs 1740 with `o200k_base`, a 2.60 ratio both times.
+Measured on 2026-11-11 with the counter described below. Before `context` left the default row, checked separately against tiktoken: 4503 vs 1733 tokens with `cl100k_base`, 4527 vs 1740 with `o200k_base`, a 2.60 ratio both times.
 
 ## Rerun it
 

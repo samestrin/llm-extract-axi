@@ -39,7 +39,7 @@ This tool is built to the ten [AXI](https://axi.md) principles. The table record
 | # | Principle | Status |
 | --- | --- | --- |
 | 1 | Token-efficient output (TOON) | Met, with an exception: `--axi` emits TOON for the home view, `extract-links` and `extract-relevant`, but `fetch` ignores the flag and prints the raw body. Fetching is a byte pipe; TOON would wrap the page, not reduce it. |
-| 2 | Minimal default schemas (3–4 fields) | Exception: `extract-links` rows have five fields (`context`, `href`, `score`, `section`, `text`). All five are used for ranking, and there is no `--fields` flag. |
+| 2 | Minimal default schemas (3–4 fields) | `extract-links` rows have four fields by default (`href`, `text`, `score`, `section`). `--fields` picks others, e.g. `--fields context,href`; an unknown field exits 2 and lists the valid ones. |
 | 3 | Content truncation with a size hint and `--full` | Exception: `fetch` prints the whole body by design — that is what it is for — up to a configurable size cap (`--max-bytes` / `FETCH_MAX_BYTES`, default 16 MiB); a body larger than the cap is an error, not a truncated page. `--output FILE` is the way to keep a large page out of context. There is no truncation, size hint or `--full`. |
 | 4 | Pre-computed aggregates | Met: `extract-links` reports `total`; `extract-relevant` reports `total`, `total_files` and `processed_files`, and a partial directory run reports `<n> of <total> files failed`. |
 | 5 | Definitive empty states | Met: an empty success carries `total: 0` and a `message` ("no links found" / "no relevant content found"); a failure carries `error` and no total. |

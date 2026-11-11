@@ -23,7 +23,65 @@ var (
 	extractLinksTimeout int
 	extractLinksJSON    bool
 	extractLinksMinimal bool
+	extractLinksFields  string
 )
+
+// linkFields are the fields a link row can carry, in print order.
+var linkFields = []string{"href", "text", "score", "section", "context"}
+
+// defaultLinkFields is the row without --fields. context is left out because
+// it is the least useful of the five per token; --fields context brings it back.
+var defaultLinkFields = []string{"href", "text", "score", "section"}
+
+// parseLinkFields turns the --fields value into a set. An unknown name is a
+// usage error that lists the valid ones; the wording matches the marker
+// output.ExitCodeFor reads, so the exit code is 2.
+func parseLinkFields(spec string) (map[string]bool, error) {
+	names := defaultLinkFields
+	if spec != "" {
+		names = strings.Split(spec, ",")
+	}
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		n = strings.ToLower(strings.TrimSpace(n))
+		valid := false
+		for _, f := range linkFields {
+			if f == n {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("invalid argument %q for \"--fields\" flag: unknown field; valid fields: %s", n, strings.Join(linkFields, ", "))
+		}
+		set[n] = true
+	}
+	return set, nil
+}
+
+// selectLinkFields blanks every field the caller did not ask for. Each field
+// is omitempty, so a blanked field is absent from text, --json and --axi alike.
+func selectLinkFields(links []LinkInfo, set map[string]bool) []LinkInfo {
+	out := make([]LinkInfo, len(links))
+	for i, l := range links {
+		if !set["href"] {
+			l.Href = ""
+		}
+		if !set["text"] {
+			l.Text = ""
+		}
+		if !set["score"] {
+			l.Score = 0
+		}
+		if !set["section"] {
+			l.Section = ""
+		}
+		if !set["context"] {
+			l.Context = ""
+		}
+		out[i] = l
+	}
+	return out
+}
 
 // LinkInfo represents a single extracted link with context
 type LinkInfo struct {
@@ -120,6 +178,7 @@ Examples:
 	cmd.Flags().IntVar(&extractLinksTimeout, "timeout", 30, "HTTP timeout in seconds")
 	cmd.Flags().BoolVar(&extractLinksJSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&extractLinksMinimal, "min", false, "Output in minimal/token-optimized format")
+	cmd.Flags().StringVar(&extractLinksFields, "fields", "", "Comma-separated link fields to print: href,text,score,section,context (default href,text,score,section)")
 
 	_ = cmd.MarkFlagRequired("url")
 
@@ -134,6 +193,10 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	// Validate URL
 	if !isURL(extractLinksURL) {
 		return errInvalidURL
+	}
+
+	if _, err := parseLinkFields(extractLinksFields); err != nil {
+		return err
 	}
 
 	result := ExtractLinksResult{
@@ -555,18 +618,23 @@ func parseLLMRankings(response string, linkCount int) ([]LLMRanking, error) {
 
 func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) error {
 	var finalResult ExtractLinksResult
+	// Selection happens here, after help[] was built from the full links.
+	fields, _ := parseLinkFields(extractLinksFields)
+	result.Links = selectLinkFields(result.Links, fields)
 
 	if extractLinksMinimal {
 		// Convert to minimal format
 		minLinks := make([]LinkInfo, len(result.Links))
 		for i, link := range result.Links {
-			score := link.Score
 			minLinks[i] = LinkInfo{
 				H:   link.Href,
 				T:   link.Text,
 				C:   link.Context,
-				S:   &score,
 				Sec: link.Section,
+			}
+			if fields["score"] {
+				score := link.Score
+				minLinks[i].S = &score
 			}
 		}
 		finalResult = ExtractLinksResult{
@@ -607,12 +675,28 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 		_, _ = fmt.Fprintln(w)
 
 		for _, link := range result.Links {
-			_, _ = fmt.Fprintf(w, "[%d] %s\n", link.Score, link.Text)
-			_, _ = fmt.Fprintf(w, "    %s\n", link.Href)
-			if link.Section != "" {
-				_, _ = fmt.Fprintf(w, "    Section: %s | Context: %s\n", link.Section, link.Context)
-			} else {
-				_, _ = fmt.Fprintf(w, "    Context: %s\n", link.Context)
+			var head []string
+			if fields["score"] {
+				head = append(head, fmt.Sprintf("[%d]", link.Score))
+			}
+			if fields["text"] {
+				head = append(head, link.Text)
+			}
+			if len(head) > 0 {
+				_, _ = fmt.Fprintln(w, strings.Join(head, " "))
+			}
+			if fields["href"] {
+				_, _ = fmt.Fprintf(w, "    %s\n", link.Href)
+			}
+			var meta []string
+			if fields["section"] && link.Section != "" {
+				meta = append(meta, "Section: "+link.Section)
+			}
+			if fields["context"] {
+				meta = append(meta, "Context: "+link.Context)
+			}
+			if len(meta) > 0 {
+				_, _ = fmt.Fprintf(w, "    %s\n", strings.Join(meta, " | "))
 			}
 			_, _ = fmt.Fprintln(w)
 		}
