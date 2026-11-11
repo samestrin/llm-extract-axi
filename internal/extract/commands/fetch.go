@@ -75,7 +75,7 @@ Use --output to save the body to a file instead of stdout.`,
 func runFetch(cmd *cobra.Command, args []string) error {
 	rawURL := args[0]
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
-		return fmt.Errorf("invalid URL: must start with http:// or https://")
+		return errInvalidURL
 	}
 	if fetchFormat != formatRaw {
 		return fmt.Errorf("unsupported --format %q: only %q is available", fetchFormat, formatRaw)
