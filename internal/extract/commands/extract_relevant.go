@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
 
+	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
 	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
 	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
@@ -274,6 +276,17 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 	return nil
 }
 
+// maxRemoteBodyBytes caps the page body extract-relevant and extract-links
+// read into memory. It is the fetch tier's cap, so FETCH_MAX_BYTES moves all
+// three commands together. A variable so a test can lower it.
+var maxRemoteBodyBytes = loadRemoteBodyCap()
+
+// loadRemoteBodyCap reads the configured cap: 16 MiB unless FETCH_MAX_BYTES
+// sets another positive value.
+func loadRemoteBodyCap() int {
+	return fetch.LoadConfig().MaxBodyBytes
+}
+
 // fetchURL fetches content from a URL and converts HTML to plain text
 func fetchURL(url string, timeout int) (string, error) {
 	client := &http.Client{
@@ -301,18 +314,40 @@ func fetchURL(url string, timeout int) (string, error) {
 
 	contentType := resp.Header.Get("Content-Type")
 
+	body, err := readCappedBody(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
 	// Check if it's HTML content
 	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml") {
-		return htmlToText(resp.Body)
+		return htmlToText(bytes.NewReader(body))
 	}
 
 	// For non-HTML content, read as-is
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
 	return string(body), nil
+}
+
+// readCappedBody reads a response body of at most maxRemoteBodyBytes. It reads
+// one byte past the cap, as the fetch tier does: if that byte arrives the body
+// is larger than the cap and the read is an error, never a truncated page
+// handed on as if whole. LimitReader bounds memory against an endless body.
+func readCappedBody(r io.Reader) ([]byte, error) {
+	limit := maxRemoteBodyBytes
+	readN := int64(limit)
+	// Guard the +1 against overflow at the maximum cap, which would wrap
+	// negative and make LimitReader return an empty success.
+	if readN < math.MaxInt64 {
+		readN++
+	}
+	body, err := io.ReadAll(io.LimitReader(r, readN))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(body) > limit {
+		return nil, fmt.Errorf("%w: body exceeds %d-byte cap (raise it with FETCH_MAX_BYTES)", fetch.ErrTooLarge, limit)
+	}
+	return body, nil
 }
 
 // htmlToText converts HTML content to clean plain text
