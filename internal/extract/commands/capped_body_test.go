@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -175,5 +176,19 @@ func TestReadCappedBodyReportsAReadError(t *testing.T) {
 	body, err := readCappedBody(iotest.ErrReader(errors.New("connection reset")))
 	if err == nil || !strings.Contains(err.Error(), "connection reset") || body != nil {
 		t.Errorf("readCappedBody = %q, %v; want the read error", body, err)
+	}
+}
+
+// Defends the overflow guard on the extra byte: at the largest cap a plain +1
+// wraps negative, LimitReader then reads nothing, and an empty body would be
+// handed on as a success. FETCH_MAX_BYTES=9223372036854775807 reaches it.
+func TestReadCappedBodyAtTheLargestCapReadsTheWholeBody(t *testing.T) {
+	prev := maxRemoteBodyBytes
+	maxRemoteBodyBytes = math.MaxInt
+	t.Cleanup(func() { maxRemoteBodyBytes = prev })
+
+	body, err := readCappedBody(strings.NewReader("whole page"))
+	if err != nil || string(body) != "whole page" {
+		t.Errorf("readCappedBody = %q, %v; want the whole body", body, err)
 	}
 }
