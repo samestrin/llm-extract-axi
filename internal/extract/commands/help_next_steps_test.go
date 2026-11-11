@@ -85,11 +85,9 @@ func TestExtractRelevantHelp(t *testing.T) {
 	}
 	withAXI(t)
 	out, _ := runExtractRelevantCmd(t, "--path", src, "--context", "x")
-	if h := helpOf(t, out); len(h) == 0 {
-		t.Errorf("empty result lacks help[]:\n%s", out)
+	if h := helpOf(t, out); len(h) != 1 || !strings.Contains(h[0].(string), "llm-extract extract-relevant --path '"+src+"'") {
+		t.Errorf("empty result lacks a concrete next command: %v\n%s", h, out)
 	}
-	out, _ = runExtractRelevantCmd(t, "--path", src+"-missing", "--context", "x")
-	_ = out
 	// An error after work starts: unreachable model.
 	srv.Close()
 	out, _ = runExtractRelevantCmd(t, "--path", src, "--context", "x")
@@ -105,3 +103,15 @@ func TestExtractRelevantHelp(t *testing.T) {
 }
 
 func outputSetOff() { output.SetDefaultAXI(false) }
+
+// Defends T4: a failed model call during --context ranking gets the API-key
+// advice, not the generic fetch advice.
+func TestExtractLinksHelpOnLLMRankingFailure(t *testing.T) {
+	failingLLM(t, 500)
+	page := helpPageServer(t, `<html><body><h1><a href="/a">A</a></h1></body></html>`)
+	withAXI(t)
+	h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth"))
+	if len(h) == 0 || !strings.Contains(h[0].(string), "API_KEY") {
+		t.Errorf("LLM ranking failure lacks key advice: %v", h)
+	}
+}

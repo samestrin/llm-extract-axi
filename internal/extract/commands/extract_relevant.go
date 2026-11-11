@@ -647,13 +647,17 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 // an error, an empty result, or an extraction.
 func extractRelevantHelp(result ExtractRelevantResult) []string {
 	const usage = "Run 'llm-extract extract-relevant --help' for usage"
+	target := result.Path
+	if result.URL != "" {
+		target = result.URL
+	}
 	switch {
 	case result.Error != "":
 		return []string{"Fix the cause named in the error, then run the command again", usage}
 	case len(result.ExtractedParts) == 0:
-		return []string{"Broaden --context, or point --path at a parent directory, then run the command again"}
+		return []string{"Broaden the context: llm-extract extract-relevant --path '" + target + "' --context '<broader topic>'"}
 	default:
-		return []string{"Save the extraction with -o <file>, or narrow --context to cut it further"}
+		return []string{"Narrow and save it: llm-extract extract-relevant --path '" + target + "' --context '<narrower topic>' -o <file>"}
 	}
 }
 
