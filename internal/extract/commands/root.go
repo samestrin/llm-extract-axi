@@ -2,16 +2,21 @@
 package commands
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
+	goaxi "github.com/samestrin/go-axi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
+	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
 	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
 
@@ -74,27 +79,111 @@ var reachTable = []reach{
 // executable locates the running binary; a variable so tests can stub it.
 var executable = os.Executable
 
-// printHome writes the bare-run view. It reads only the process's own path
-// and HOME: no network, no model.
-func printHome(w io.Writer) error {
-	var path string
+// homeAbout is the home view's one-sentence description.
+const homeAbout = "Fetch outside content and reduce it to what an agent needs."
+
+// reachRow is one row of the home view's reach table under --axi.
+type reachRow struct {
+	Command string `json:"command"`
+	Network string `json:"network"`
+	Model   string `json:"model"`
+}
+
+// homeView is the bare-run payload under --axi: identity, the reach table and
+// the configuration a run would use. The API key is reported as set or not and
+// never carried, and the base URL has passed through redactURL.
+type homeView struct {
+	Bin           string     `json:"bin"`
+	About         string     `json:"about"`
+	Reach         []reachRow `json:"reach"`
+	APIKeySet     bool       `json:"api_key_set"`
+	Model         string     `json:"model"`
+	BaseURL       string     `json:"base_url"`
+	FetchMaxBytes int        `json:"fetch_max_bytes"`
+}
+
+// homeHelp is the help[] block of the home view under --axi.
+var homeHelp = []string{
+	"Fetch a page: llm-extract fetch <url>",
+	"List a page's links: llm-extract extract-links --url <url>",
+	"Pull what matters from a file or URL: llm-extract extract-relevant --path <path> --context <text>",
+	"Flags for any command: llm-extract <command> --help",
+}
+
+// buildHomeView reads the process's own path, HOME and environment: no
+// network, no model.
+func buildHomeView() homeView {
+	view := homeView{About: homeAbout}
 	if exe, err := executable(); err != nil {
-		path = fmt.Sprintf("unknown (%v)", err)
+		view.Bin = fmt.Sprintf("unknown (%v)", err)
 	} else {
 		home, _ := os.UserHomeDir()
-		path = tildeHome(exe, home)
+		view.Bin = tildeHome(exe, home)
+	}
+	for _, r := range reachTable {
+		view.Reach = append(view.Reach, reachRow{r.command, r.network, r.model})
+	}
+	cfg := llmapi.GetAPIConfig()
+	view.APIKeySet = cfg.APIKey != ""
+	view.Model = cfg.Model
+	view.BaseURL = redactURL(cfg.BaseURL)
+	view.FetchMaxBytes = fetch.LoadConfig().MaxBodyBytes
+	return view
+}
+
+// printHome writes the bare-run view: TOON with a help[] block under --axi,
+// a table otherwise.
+func printHome(w io.Writer) error {
+	view := buildHomeView()
+	if GlobalAXIOutput {
+		// Assembled first and written once, so a failed help block never
+		// leaves a payload on stdout that decodes without it.
+		var doc bytes.Buffer
+		if err := output.EncodeAXI(&doc, view); err != nil {
+			return err
+		}
+		if err := goaxi.WriteHelp(&doc, homeHelp); err != nil {
+			return err
+		}
+		_, err := w.Write(doc.Bytes())
+		return err
+	}
+	keyState := "not set (extract-relevant and extract-links --context need one)"
+	if view.APIKeySet {
+		keyState = "set"
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintf(tw, "llm-extract\t%s\n", path)
-	_, _ = fmt.Fprintln(tw, "Fetch outside content and reduce it to what an agent needs.")
+	_, _ = fmt.Fprintf(tw, "llm-extract\t%s\n", view.Bin)
+	_, _ = fmt.Fprintln(tw, view.About)
 	_, _ = fmt.Fprintln(tw)
 	_, _ = fmt.Fprintln(tw, "command\tnetwork\tmodel")
-	for _, r := range reachTable {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", r.command, r.network, r.model)
+	for _, r := range view.Reach {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Command, r.Network, r.Model)
 	}
+	_, _ = fmt.Fprintln(tw)
+	_, _ = fmt.Fprintf(tw, "api key\t%s\n", keyState)
+	_, _ = fmt.Fprintf(tw, "model\t%s\n", view.Model)
+	_, _ = fmt.Fprintf(tw, "base url\t%s\n", view.BaseURL)
+	_, _ = fmt.Fprintf(tw, "fetch max bytes\t%d\n", view.FetchMaxBytes)
 	_, _ = fmt.Fprintln(tw)
 	_, _ = fmt.Fprintln(tw, "Run 'llm-extract --help' for flags, or 'llm-extract <command> --help'.")
 	return tw.Flush()
+}
+
+// redactURL returns the scheme, host and path of raw, dropping userinfo,
+// query and fragment, where a password or token may sit. A value that does
+// not parse as an absolute URL is not echoed, since the secret is still in it.
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "(not a valid URL)"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	u.RawFragment = ""
+	return u.String()
 }
 
 // tildeHome replaces a leading home directory in path with ~. A directory
