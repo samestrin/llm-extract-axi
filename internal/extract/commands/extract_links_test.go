@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
 
 func TestExtractLinksCommand_MissingURL(t *testing.T) {
@@ -637,8 +639,9 @@ func TestExtractLinksCommand_TextOutput(t *testing.T) {
 	if !strings.Contains(output, "Documentation") {
 		t.Error("expected link text in output")
 	}
-	if !strings.Contains(output, "Section:") || !strings.Contains(output, "Context:") {
-		t.Error("expected 'Section:' and 'Context:' in text output")
+	// context is not a default field any more; section still is.
+	if !strings.Contains(output, "Section:") || strings.Contains(output, "Context:") {
+		t.Errorf("expected Section: and no Context: in default text output:\n%s", output)
 	}
 }
 
@@ -657,7 +660,8 @@ func TestExtractLinksCommand_TextOutputNoSection(t *testing.T) {
 	cmd := newExtractLinksCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
-	cmd.SetArgs([]string{"--url", server.URL})
+	t.Cleanup(func() { extractLinksFields = "" })
+	cmd.SetArgs([]string{"--url", server.URL, "--fields", "context,href"})
 
 	err := cmd.Execute()
 	if err != nil {
@@ -914,5 +918,109 @@ func TestLLMLinkInput_OmitsEmptySection(t *testing.T) {
 	// Empty section should be omitted
 	if strings.Contains(string(data), "section") {
 		t.Error("expected empty section to be omitted from JSON")
+	}
+}
+
+func linksFieldsServer(t *testing.T) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`<html><body><h2>Start</h2><p><a href="/docs">Documentation</a></p></body></html>`))
+	}))
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+func runLinksFields(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	// The flag variables are package globals; a stray --fields would leak
+	// into every later test that goes through run().
+	t.Cleanup(func() { extractLinksFields = "" })
+	cmd := newExtractLinksCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return buf.String(), err
+}
+
+// Defends the cut from five fields to four: with no --fields, context must be
+// absent and the other four present, in text, --json and --axi.
+func TestExtractLinksDefaultRowHasFourFields(t *testing.T) {
+	u := linksFieldsServer(t)
+	for _, mode := range []string{"", "--json", "--axi"} {
+		args := []string{"--url", u}
+		if mode == "--json" {
+			args = append(args, mode)
+		}
+		if mode == "--axi" {
+			prev := GlobalAXIOutput
+			GlobalAXIOutput = true
+			t.Cleanup(func() { GlobalAXIOutput = prev })
+			output.SetDefaultAXI(true)
+			t.Cleanup(func() { output.SetDefaultAXI(false) })
+		}
+		out, err := runLinksFields(t, args...)
+		if err != nil {
+			t.Fatalf("%q: %v", mode, err)
+		}
+		if mode != "" && (strings.Contains(out, `"context"`) || strings.Contains(out, "context}") || strings.Contains(out, ",context")) {
+			t.Errorf("%q: context leaked into default row:\n%s", mode, out)
+		}
+		if mode == "" && strings.Contains(out, "Context:") {
+			t.Errorf("text: context leaked:\n%s", out)
+		}
+		for _, want := range []string{"Documentation", "/docs", "Start"} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%q: missing %q:\n%s", mode, want, out)
+			}
+		}
+		if mode != "" && !strings.Contains(out, "score") {
+			t.Errorf("%q: score missing:\n%s", mode, out)
+		}
+	}
+}
+
+// Defends --fields narrowing the row in --json, and context staying reachable.
+func TestExtractLinksFieldsSelectsOnlyThose(t *testing.T) {
+	u := linksFieldsServer(t)
+	out, err := runLinksFields(t, "--url", u, "--json", "--fields", "href,text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r ExtractLinksResult
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatal(err)
+	}
+	l := r.Links[0]
+	if l.Href == "" || l.Text == "" || l.Score != 0 || l.Section != "" || l.Context != "" {
+		t.Errorf("row is not exactly href,text: %+v", l)
+	}
+	out, err = runLinksFields(t, "--url", u, "--json", "--fields", "context,href")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"context": "p"`) || strings.Contains(out, `"text"`) {
+		t.Errorf("--fields context,href wrong:\n%s", out)
+	}
+	out, _ = runLinksFields(t, "--url", u, "--fields", "href,text")
+	if strings.Contains(out, "Section:") || strings.Contains(out, "[") && strings.Contains(out, "] ") {
+		t.Errorf("text output not narrowed:\n%s", out)
+	}
+}
+
+// Defends the usage contract: an unknown field is exit 2 and lists the valid ones.
+func TestExtractLinksUnknownFieldIsUsageError(t *testing.T) {
+	_, err := runLinksFields(t, "--url", "http://127.0.0.1:1", "--fields", "href,bogus")
+	if err == nil {
+		t.Fatal("unknown field returned no error")
+	}
+	if code := output.ExitCodeFor(err); code != 2 {
+		t.Errorf("exit code = %d, want 2 (%v)", code, err)
+	}
+	for _, f := range []string{"href", "text", "score", "section", "context"} {
+		if !strings.Contains(err.Error(), f) {
+			t.Errorf("error does not list %q: %v", f, err)
+		}
 	}
 }
