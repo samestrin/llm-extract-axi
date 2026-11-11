@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `README.md` was rewritten to the standard layout: install covers the release binary with the `SHA256SUMS.txt` checksum step, `go install`, a source build, `llm-extract setup` and `npx skills add`; the AXI conformance table moved to `docs/axi-audit.md` and the long output and failure prose to `docs/output.md`. No content was dropped.
 - `extract-links` and the page fetch inside `extract-relevant` now stop on cancellation instead of running to completion, so an interrupted run returns promptly rather than finishing a download nobody is waiting for.
 - `llm-extract` with no arguments now reports the configuration a run would use — whether an API key is set, the model, the base URL (with any userinfo, query or fragment dropped, where a token may sit) and the fetch size cap — alongside the command reach table. Under `--axi` the home view is one TOON document with a `help[]` list of next steps. It still makes no network or model call.
 - Under `--axi`, `extract-links` and `extract-relevant` now carry a `help[]` list of next steps: a concrete next command on an empty result, recovery steps on an error, and one next step after a successful result. `--json` output is unchanged.
