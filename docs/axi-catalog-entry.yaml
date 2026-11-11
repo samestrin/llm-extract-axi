@@ -1,0 +1,61 @@
+# DRAFT catalog entry for kunchenguid/axi `catalog.yaml`, `community` list.
+#
+# This file is a draft, not a submission. Nothing here has been sent to
+# kunchenguid/axi. The owner submits it (the PR is public).
+#
+# In kunchenguid/axi, `catalog.yaml` is the single source of truth: the README
+# and docs tables are generated from it, and `docs:check` fails on a
+# hand-edited generated region. No CI, tag or release action in this repo
+# follows from this file; that PR is the whole task.
+#
+# Steps the owner runs:
+#   1. Fork kunchenguid/axi and branch from its main.
+#   2. Append the `- name: llm-extract-axi` entry below (without these comments)
+#      to the `community` list in catalog.yaml.
+#   3. Refresh `reviewed_revision` to the release commit (see note below).
+#   4. Run `pnpm run docs:gen` to regenerate README.md and docs/index.html, and
+#      commit all three files (catalog.yaml, README.md, docs/index.html)
+#      together (CI `docs:check` fails on drift).
+#   5. Push through the `no-mistakes` gate (`no-mistakes init --fork-url
+#      git@github.com:<you>/axi.git`, then `git push no-mistakes`; v1.30.1 or
+#      newer for forks). It runs the pipeline and opens the PR.
+#
+# `reviewed_revision` is the commit docs/axi-audit.md was made against
+# (4a73d42, the code the v1.1.0 release tag will carry). Repo PRs are
+# squash-merged, so tag the release and replace it with the tagged commit
+# after re-checking that docs/axi-audit.md is unchanged.
+#
+# The token number is quoted from benchmarks/README.md (4240 raw-page tokens
+# vs 1435 `extract-links --axi` tokens on one 15,411-byte fixture page = 3.0x).
+# If that file changes, re-quote it here.
+- name: llm-extract-axi
+  url: https://github.com/samestrin/llm-extract-axi
+  author: samestrin
+  domain: Extraction
+  description: "Fetches a web page or file and returns only the ranked links or the passages relevant to a given context; on a 15 KB documentation page, `extract-links --axi` printed 3.0x fewer tokens than the page itself (1,435 vs 4,240, offline benchmark, no model call)."
+  admission:
+    status: exception
+    reviewed_revision: 4a73d427d286e57d004d93ce200d1b036c6cde88
+    reviewed_components:
+      - README.md
+      - docs/axi-audit.md
+      - docs/output.md
+      - benchmarks/README.md
+      - cmd/llm-extract/main.go
+      - pkg/output/axi.go
+      - pkg/output/exit.go
+      - internal/extract/commands/root.go
+      - internal/extract/commands/fetch.go
+      - internal/extract/commands/extract_links.go
+      - internal/extract/commands/extract_relevant.go
+      - internal/extract/commands/setup.go
+    source_observations:
+      - "docs/axi-audit.md marks principles 2, 4, 5, 8 and 10 as met: extract-links rows default to four fields (href, text, score, section) with --fields to pick others; extract-links and extract-relevant always report a total; an empty success carries total 0 and a message (no links found, no relevant content found) while a failure carries an error and no total; a bare run prints the binary path, the network/model reach table and the live configuration with no network or model call; --help exits 0 on the root and all five subcommands."
+      - "--axi is a persistent root flag. The home view, extract-links and extract-relevant emit TOON through output.EncodeAXI; under --axi they also carry help[] next steps, on success, on an empty result and on an error."
+      - "Under --axi, runtime errors are a structured error/message/help[] document on stdout with exit 1 and nothing on stderr. A mid-run failure keeps the partial result and still exits non-zero: unranked heuristic links after a failed --context ranking, and '<n> of <total> files failed' for a partial extract-relevant directory run."
+      - "A malformed invocation (unknown command or unknown flag) exits 2 with a structured error under --axi, before any network or model call; this is the go-axi usage-error convention (goaxi.ExitUsage, pkg/output/exit.go)."
+      - "llm-extract setup writes a Claude Code SessionStart hook into .claude/settings.json and an Agent Skill into .claude/skills/llm-extract/SKILL.md; it keeps other settings, is idempotent, has --dry-run and never touches the home directory. Nothing prompts."
+      - "fetch prints the whole body up to a configurable size cap (--max-bytes / FETCH_MAX_BYTES, default 16 MiB); a larger body is an error with no partial output. The same cap, set by FETCH_MAX_BYTES (--max-bytes is fetch's flag only), covers extract-links and the extract-relevant page fetch."
+      - "benchmarks/README.md: on one committed 15,411-byte documentation page served on loopback, extract-links --axi in heuristic mode printed 1435 tokens against 4240 for the raw page (3.0x). The counts are a lower bound from cl100k_base's split pattern; tiktoken gave a 2.60 ratio on the same page before the default row dropped a field. One page is one data point, not an average."
+      - "The model-call paths of extract-links --context and extract-relevant were not probed end to end (no LLM endpoint on the build host); their failure and output shapes are covered by fake-endpoint tests."
+    exception: "Five stated exceptions, per docs/axi-audit.md: (1) fetch is not TOON, it is a byte pipe and prints the raw body under --axi; (3) fetch has no --full and no command truncates content, so there is no size hint, and a body over the size cap is an error; (6) plain-mode errors (neither --axi nor --json) stay on stderr; (7) setup has no Codex or OpenCode target and no session-end hook; (9) help[] is --axi only, --json output is unchanged and plain mode is prose."
