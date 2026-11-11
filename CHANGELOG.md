@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `docs/axi-audit.md`: a principle-by-principle audit against the ten AXI principles, each claim with a `file:line` or a named test, carrying the four stated exceptions (`fetch` is not TOON, `fetch` has no `--full`, `setup` has no Codex or OpenCode target and no session-end hook, plain-mode errors stay on stderr).
 - `extract-links --fields <list>` chooses which of `href`, `text`, `score`, `section` and `context` each link carries, in text, `--json` and `--axi`. An unknown field is a usage error (exit 2) that lists the valid ones.
 - The Agent Skill is now committed at `integrations/claude-code/skill/SKILL.md`, so `npx skills add samestrin/llm-extract-axi --skill llm-extract` works. A test keeps it identical to the skill `llm-extract setup` writes.
 
