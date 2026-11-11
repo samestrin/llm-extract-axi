@@ -34,19 +34,27 @@ func binary(t *testing.T, name string) string {
 	return path
 }
 
-// Defends the Makefile's -X target: if the ldflags name the wrong variable,
-// the build still succeeds and the binary reports "dev".
-func TestCLIVersionIsStamped(t *testing.T) {
-	out, err := exec.Command(binary(t, "llm-extract"), "--version").CombinedOutput()
-	if err != nil {
-		t.Fatalf("--version failed: %v\n%s", err, out)
-	}
-	got := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(got, "llm-extract version ") {
-		t.Fatalf("unexpected --version output: %q", got)
-	}
-	if strings.HasSuffix(got, " dev") {
-		t.Errorf("version was not stamped at build time: %q", got)
+// Defends the Makefile's -X target and the bare-version contract: every
+// version flag on both binaries prints the same version with no program name,
+// no leading "v", exit 0, and never "dev" (an unstamped build).
+func TestBinariesPrintBareStampedVersion(t *testing.T) {
+	var first string
+	for _, bin := range []string{"llm-extract", "llm-extract-mcp"} {
+		for _, flag := range []string{"-v", "-V", "--version"} {
+			out, err := exec.Command(binary(t, bin), flag).Output()
+			if err != nil {
+				t.Fatalf("%s %s failed: %v\n%s", bin, flag, err, out)
+			}
+			got := strings.TrimSpace(string(out))
+			if got == "" || got == "dev" || strings.ContainsAny(got, " \t") || strings.HasPrefix(got, "v") {
+				t.Errorf("%s %s printed %q, want a bare stamped version", bin, flag, got)
+			}
+			if first == "" {
+				first = got
+			} else if got != first {
+				t.Errorf("%s %s printed %q, want %q", bin, flag, got, first)
+			}
+		}
 	}
 }
 

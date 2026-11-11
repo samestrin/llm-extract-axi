@@ -10,6 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/samestrin/llm-extract-axi/internal/extract/commands"
 	"github.com/samestrin/llm-extract-axi/internal/extract/mcpserver"
 )
 
@@ -17,6 +18,11 @@ import (
 var serverVersion = "dev"
 
 func main() {
+	// Answered before FindBinary and before any server start.
+	if len(os.Args) == 2 && commands.IsVersionFlag(os.Args[1]) {
+		fmt.Println(commands.BareVersion(serverVersion))
+		return
+	}
 	bin, err := mcpserver.FindBinary()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)

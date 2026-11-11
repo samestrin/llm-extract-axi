@@ -71,12 +71,16 @@ func TestRunVersionReportsVersionVariable(t *testing.T) {
 	t.Cleanup(func() { Version = old })
 	Version = "v9.9.9-test"
 
-	var stdout, stderr bytes.Buffer
-	if code := run([]string{"--version"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("--version exited %d; stderr=%q", code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "v9.9.9-test") {
-		t.Errorf("--version did not print the stamped version: %q", stdout.String())
+	// The v of a git describe stamp is stripped; --axi alongside takes the
+	// cobra path rather than the lone-flag shortcut.
+	for _, args := range [][]string{{"-v"}, {"-V"}, {"--version"}, {"--axi", "--version"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 0 {
+			t.Fatalf("%v exited %d; stderr=%q", args, code, stderr.String())
+		}
+		if stdout.String() != "9.9.9-test\n" {
+			t.Errorf("%v printed %q, want the bare version", args, stdout.String())
+		}
 	}
 }
 
