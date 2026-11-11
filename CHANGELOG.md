@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-11
+
 ### Added
 
 - `extract-links --fields <list>` chooses which of `href`, `text`, `score`, `section` and `context` each link carries, in text, `--json` and `--axi`. An unknown field is a usage error (exit 2) that lists the valid ones.
