@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -205,7 +206,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	}
 
 	llmBytesSent.Store(0)
-	links, err := fetchAndExtractLinks(extractLinksURL, extractLinksTimeout)
+	links, err := fetchAndExtractLinks(cmd.Context(), extractLinksURL, extractLinksTimeout)
 	if err != nil {
 		result.Error = err.Error()
 	} else {
@@ -214,7 +215,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			// On failure the heuristic links are kept: they are printed as a
 			// partial result alongside the error, and the exit is non-zero.
 			// All of them: rankLinksWithLLM may return only the first 100.
-			ranked, err := rankLinksWithLLM(links, extractLinksContext, extractLinksTimeout)
+			ranked, err := rankLinksWithLLM(cmd.Context(), links, extractLinksContext, extractLinksTimeout)
 			if err != nil {
 				result.Error = fmt.Sprintf("LLM ranking failed: %v", err)
 			} else {
@@ -260,13 +261,15 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	}
 }
 
-// fetchAndExtractLinks fetches a URL and extracts all links with ranking
-func fetchAndExtractLinks(targetURL string, timeout int) ([]LinkInfo, error) {
+// fetchAndExtractLinks fetches a URL and extracts all links with ranking. The
+// request runs under ctx, so a cancelled run stops it; the client timeout
+// still bounds a single fetch.
+func fetchAndExtractLinks(ctx context.Context, targetURL string, timeout int) ([]LinkInfo, error) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", targetURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -508,8 +511,10 @@ type LLMRanking struct {
 	Score int `json:"score"`
 }
 
-// rankLinksWithLLM uses an LLM to rank links by relevance to the given context
-func rankLinksWithLLM(links []LinkInfo, context string, timeout int) ([]LinkInfo, error) {
+// rankLinksWithLLM uses an LLM to rank links by relevance to the given context.
+// The model call runs under ctx with the per-call timeout as a child deadline,
+// so whichever fires first ends it.
+func rankLinksWithLLM(ctx context.Context, links []LinkInfo, contextText string, timeout int) ([]LinkInfo, error) {
 	if len(links) == 0 {
 		return links, nil
 	}
@@ -559,7 +564,7 @@ Do not include any explanation or text outside the JSON.`
 		return links, fmt.Errorf("failed to marshal links: %w", err)
 	}
 
-	userPrompt := fmt.Sprintf("Context: %s\n\nLinks to rank:\n%s", context, string(linksJSON))
+	userPrompt := fmt.Sprintf("Context: %s\n\nLinks to rank:\n%s", contextText, string(linksJSON))
 
 	// Truncate if too long
 	if len(userPrompt) > 25000 {
@@ -568,7 +573,9 @@ Do not include any explanation or text outside the JSON.`
 
 	// Call the LLM
 	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
-	response, err := client.CompleteWithSystem(systemPrompt, userPrompt, time.Duration(timeout)*time.Second)
+	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+	response, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
 	if err != nil {
 		return links, fmt.Errorf("LLM request failed: %w", err)
 	}
