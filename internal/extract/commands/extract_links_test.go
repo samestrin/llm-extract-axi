@@ -1024,3 +1024,53 @@ func TestExtractLinksUnknownFieldIsUsageError(t *testing.T) {
 		}
 	}
 }
+
+// Defends the "drop href" branch: --fields text must print no href in text,
+// --json, --axi, and --min --json must omit s unless score is selected.
+func TestExtractLinksFieldsWithoutHrefAndScore(t *testing.T) {
+	u := linksFieldsServer(t)
+	out, err := runLinksFields(t, "--url", u, "--fields", "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Documentation") || strings.Contains(out, "/docs") {
+		t.Errorf("text --fields text wrong:\n%s", out)
+	}
+	out, err = runLinksFields(t, "--url", u, "--json", "--fields", "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, `"href"`) || strings.Contains(out, "/docs") || !strings.Contains(out, `"text"`) {
+		t.Errorf("--json --fields text wrong:\n%s", out)
+	}
+	out, err = runLinksFields(t, "--url", u, "--json", "--min", "--fields", "text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, `"s"`) || strings.Contains(out, `"h"`) || !strings.Contains(out, `"t"`) {
+		t.Errorf("--min --fields text wrong:\n%s", out)
+	}
+	out, err = runLinksFields(t, "--url", u, "--json", "--min", "--fields", "text,score")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"s"`) {
+		t.Errorf("--min with score lost s:\n%s", out)
+	}
+}
+
+// Defends --axi --fields href,text carrying exactly those two columns.
+func TestExtractLinksAXIFieldsSelection(t *testing.T) {
+	u := linksFieldsServer(t)
+	prev := GlobalAXIOutput
+	GlobalAXIOutput = true
+	output.SetDefaultAXI(true)
+	t.Cleanup(func() { GlobalAXIOutput = prev; output.SetDefaultAXI(false) })
+	out, err := runLinksFields(t, "--url", u, "--fields", "href,text")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "links[1]{href,text}:") {
+		t.Errorf("--axi columns are not exactly href,text:\n%s", out)
+	}
+}
