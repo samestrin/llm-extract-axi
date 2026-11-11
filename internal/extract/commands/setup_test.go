@@ -189,3 +189,19 @@ func TestSetupReportsUnreadableSettings(t *testing.T) {
 		t.Error("exit 0 when settings.json is a directory")
 	}
 }
+
+// TestCommittedSkillMatchesSetupSkill defends against the committed skill at
+// integrations/claude-code/skill/SKILL.md drifting from the one `setup`
+// writes, which would make `npx skills add` install a different skill.
+func TestCommittedSkillMatchesSetupSkill(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "..", "integrations", "claude-code", "skill", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != setupSkill {
+		t.Errorf("committed SKILL.md differs from setupSkill:\n%s", b)
+	}
+	if !strings.HasPrefix(string(b), "---\nname: llm-extract\n") {
+		t.Errorf("SKILL.md front matter must start with name: llm-extract")
+	}
+}

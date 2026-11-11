@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The Agent Skill is now committed at `integrations/claude-code/skill/SKILL.md`, so `npx skills add samestrin/llm-extract-axi --skill llm-extract` works. A test keeps it identical to the skill `llm-extract setup` writes.
+
 ## [1.0.1] - 2026-11-10
 
 ### Added
