@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `extract-links --fields <list>` chooses which of `href`, `text`, `score`, `section` and `context` each link carries, in text, `--json` and `--axi`. An unknown field is a usage error (exit 2) that lists the valid ones.
 - The Agent Skill is now committed at `integrations/claude-code/skill/SKILL.md`, so `npx skills add samestrin/llm-extract-axi --skill llm-extract` works. A test keeps it identical to the skill `llm-extract setup` writes.
 
-- `extract-links` and `extract-relevant` now cap how much of a page body is read into memory, the same way `fetch` already does. A body larger than the cap is an error (`response body exceeds size cap`), never a truncated page reported as success. The cap is set with `--max-bytes` or `FETCH_MAX_BYTES` and defaults to 16 MiB.
+- `extract-links` and `extract-relevant` now cap how much of a page body is read into memory, the same way `fetch` already does. A body larger than the cap is an error (`response body exceeds size cap`), never a truncated page reported as success. The cap is set with `FETCH_MAX_BYTES` and defaults to 16 MiB (on `fetch` it is also set with `--max-bytes`).
 
 ### Changed
 
