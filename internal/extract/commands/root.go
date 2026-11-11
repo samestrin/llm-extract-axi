@@ -269,3 +269,5 @@ func splitDefault(def string) []string {
 	}
 	return strings.Split(def, ",")
 }
+
+func argsWantAXI(args []string) bool { return false }
