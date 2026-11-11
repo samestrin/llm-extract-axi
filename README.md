@@ -31,9 +31,9 @@ Pin a version instead of installing the latest release:
 curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | LLM_EXTRACT_VERSION=v1.0.1 bash
 ```
 
-If `~/.local/bin` is not on your `PATH`, the installer says so and prints the `export` line to add.
+If `~/.local/bin` is not on `PATH`, the installer says so and prints the `export` line to add.
 
-To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing`, and copy the binary onto your `PATH`.
+To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing`, and copy the binary onto `PATH`.
 
 ### go install
 
@@ -56,7 +56,7 @@ make build                    # binaries land in ./build/
 
 ### Claude Code setup
 
-Run `llm-extract setup` in a project (or with `--dir`) to write a SessionStart hook into `.claude/settings.json` and an Agent Skill into `.claude/skills/llm-extract/SKILL.md`. Other settings are kept, a second run changes nothing, and `--dry-run` shows what would be written. It never touches your home directory.
+Run `llm-extract setup` in a project (or with `--dir`) to write a SessionStart hook into `.claude/settings.json` and an Agent Skill into `.claude/skills/llm-extract/SKILL.md`. Other settings are kept, a second run changes nothing, and `--dry-run` shows what would be written. It never touches the home directory.
 
 The same skill is also published for the `skills` CLI:
 
@@ -70,7 +70,7 @@ Re-run the install one-liner; it replaces the binaries only after the new downlo
 
 ### Uninstall
 
-Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or your `INSTALL_DIR`). To remove the Claude Code integration, delete the hook entry `setup` added to `.claude/settings.json` and the `.claude/skills/llm-extract/` directory in the project.
+Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or the `INSTALL_DIR`). To remove the Claude Code integration, delete the hook entry `setup` added to `.claude/settings.json` and the `.claude/skills/llm-extract/` directory in the project.
 
 ## Quick start
 
@@ -164,6 +164,8 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
 - `fetch` prints the raw body and ignores `--axi`; TOON applies to the home view, `extract-links` and `extract-relevant`.
 - `help[]` next steps appear only on the home view and on `extract-links` and `extract-relevant` results and errors under `--axi`.
+- Plain-mode errors (neither `--axi` nor `--json`) print on stderr, not stdout; structured errors on stdout are an `--axi` and `--json` behavior.
+- `setup` targets Claude Code only: there is no Codex or OpenCode target and no session-end hook.
 - The AXI exceptions behind these limits, with their reasons, are recorded in [docs/axi-audit.md](docs/axi-audit.md).
 
 ## Documentation
