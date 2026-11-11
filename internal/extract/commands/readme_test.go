@@ -33,7 +33,7 @@ var (
 // flagListed reports whether help lists flag in its Flags section. A bare
 // substring match would pass on a flag that survives only in an Examples line.
 func flagListed(help, flag string) bool {
-	re := regexp.MustCompile(`(?m)^\s+(-[a-zA-Z], )?` + regexp.QuoteMeta(flag) + `\b`)
+	re := regexp.MustCompile(`(?m)^\s+(-[a-zA-Z], )?` + regexp.QuoteMeta(flag) + `(?:\s|=|$)`)
 	if !strings.HasPrefix(flag, "--") {
 		re = regexp.MustCompile(`(?m)^\s+` + regexp.QuoteMeta(flag) + `, --`)
 	}
