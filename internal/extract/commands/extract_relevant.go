@@ -64,6 +64,8 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
+	// Help is next steps, set only under --axi; --json never carries it.
+	Help []string `json:"help,omitempty"`
 }
 
 // noRelevantMessage is the explicit zero-result message.
@@ -204,6 +206,10 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		if total == 0 {
 			result.Message = noRelevantMessage
 		}
+	}
+
+	if GlobalAXIOutput {
+		result.Help = extractRelevantHelp(result)
 	}
 
 	if err := outputExtractResult(cmd, result); err != nil {
@@ -585,18 +591,19 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 		pf := result.ProcessedFiles
 		pts := result.ProcessingTimeS
 		finalResult = ExtractRelevantResult{
-			P:   result.Path,
-			U:   result.URL,
-			Ctx: result.Context,
-			EP:  result.ExtractedParts,
-			TF:  &tf,
-			PF:  &pf,
-			E:   result.Error,
-			PTS: &pts,
-			N:   result.Total,
-			Msg: result.Message,
-			M:   result.Model,
-			BS:  result.BytesSent,
+			P:    result.Path,
+			U:    result.URL,
+			Ctx:  result.Context,
+			EP:   result.ExtractedParts,
+			TF:   &tf,
+			PF:   &pf,
+			E:    result.Error,
+			PTS:  &pts,
+			N:    result.Total,
+			Msg:  result.Message,
+			M:    result.Model,
+			BS:   result.BytesSent,
+			Help: result.Help,
 		}
 	} else {
 		finalResult = result
@@ -634,6 +641,24 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 	return formatter.Print(finalResult, func(w io.Writer, data interface{}) {
 		_, _ = fmt.Fprint(w, plainExtractResult(result))
 	})
+}
+
+// extractRelevantHelp is the help[] block under --axi: what to run next after
+// an error, an empty result, or an extraction.
+func extractRelevantHelp(result ExtractRelevantResult) []string {
+	const usage = "Run 'llm-extract extract-relevant --help' for usage"
+	target := result.Path
+	if result.URL != "" {
+		target = result.URL
+	}
+	switch {
+	case result.Error != "":
+		return []string{"Fix the cause named in the error, then run the command again", usage}
+	case len(result.ExtractedParts) == 0:
+		return []string{"Broaden the context: llm-extract extract-relevant --path '" + target + "' --context '<broader topic>'"}
+	default:
+		return []string{"Narrow and save it: llm-extract extract-relevant --path '" + target + "' --context '<narrower topic>' -o <file>"}
+	}
 }
 
 // plainExtractResult renders the text output for stdout and -o alike. An error
