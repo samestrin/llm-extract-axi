@@ -16,6 +16,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
 
+	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
 	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
 	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
@@ -272,6 +273,17 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 	result.ProcessedFiles = 1
 
 	return nil
+}
+
+// maxRemoteBodyBytes caps the page body extract-relevant and extract-links
+// read into memory. It is the fetch tier's cap, so FETCH_MAX_BYTES moves all
+// three commands together. A variable so a test can lower it.
+var maxRemoteBodyBytes = loadRemoteBodyCap()
+
+// loadRemoteBodyCap reads the configured cap: 16 MiB unless FETCH_MAX_BYTES
+// sets another positive value.
+func loadRemoteBodyCap() int {
+	return fetch.LoadConfig().MaxBodyBytes
 }
 
 // fetchURL fetches content from a URL and converts HTML to plain text
