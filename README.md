@@ -164,7 +164,7 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
 - `fetch` prints the raw body and ignores `--axi`; TOON applies to the home view, `extract-links` and `extract-relevant`.
 - `help[]` next steps appear only on the home view and on `extract-links` and `extract-relevant` results and errors under `--axi`.
-- Plain-mode errors (neither `--axi` nor `--json`) print on stderr, not stdout; structured errors on stdout are an `--axi` and `--json` behavior.
+- Plain-mode errors (neither `--axi` nor `--json`) print on stderr, not stdout; under `--axi` the same error is a structured document on stdout.
 - `setup` targets Claude Code only: there is no Codex or OpenCode target and no session-end hook.
 - The AXI exceptions behind these limits, with their reasons, are recorded in [docs/axi-audit.md](docs/axi-audit.md).
 
