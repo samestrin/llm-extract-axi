@@ -17,13 +17,13 @@ A CLI for agents that pulls only what is needed from a large file or a web page,
 
 ### Release binary
 
-One line, no sudo, no clone, no Go toolchain:
+On Linux and macOS, one line, no sudo, no clone, no Go toolchain:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | bash
 ```
 
-This installs `llm-extract` and `llm-extract-mcp` into `$HOME/.local/bin` (set `INSTALL_DIR` to install elsewhere). The release assets are named `llm-extract-<os>-<arch>` and `llm-extract-mcp-<os>-<arch>` for `darwin`/`linux`/`windows` on `amd64`/`arm64`. The script downloads the release's `SHA256SUMS.txt` and verifies both binaries against it before either is installed; on an unsupported platform, a failed or stalled download, or a checksum mismatch it installs nothing and leaves an existing install untouched.
+This installs `llm-extract` and `llm-extract-mcp` into `$HOME/.local/bin` (set `INSTALL_DIR` to install elsewhere). The release assets are `llm-extract-<os>-<arch>` and `llm-extract-mcp-<os>-<arch>` for `darwin`/`linux` on `amd64`/`arm64`, plus `llm-extract-windows-amd64.exe` and `llm-extract-mcp-windows-amd64.exe` for Windows. The script downloads the release's `SHA256SUMS.txt` and verifies both binaries against it before either is installed; on an unsupported platform, a failed or stalled download, or a checksum mismatch it installs nothing and leaves an existing install untouched. Windows is not covered by the one-liner; install the `.exe` asset by hand as described below.
 
 Pin a version instead of installing the latest release:
 
@@ -33,7 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/inst
 
 If `~/.local/bin` is not on your `PATH`, the installer says so and prints the `export` line to add.
 
-To install by hand instead, download `llm-extract-<os>-<arch>` and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing`, and copy the binary onto your `PATH`.
+To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing`, and copy the binary onto your `PATH`.
 
 ### go install
 
