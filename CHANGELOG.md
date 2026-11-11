@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `llm-extract` with no arguments now reports the configuration a run would use — whether an API key is set, the model, the base URL (with any userinfo, query or fragment dropped, where a token may sit) and the fetch size cap — alongside the command reach table. Under `--axi` the home view is one TOON document with a `help[]` list of next steps. It still makes no network or model call.
+- Under `--axi`, `extract-links` and `extract-relevant` now carry a `help[]` list of next steps: a concrete next command on an empty result, recovery steps on an error, and one next step after a successful result. `--json` output is unchanged.
 - `extract-links` rows now hold four fields by default (`href`, `text`, `score`, `section`); `context` is dropped from the default and stays available with `--fields context`.
 - `-v`, `-V` and `--version` now print the bare version (`1.0.1`, without a leading `v` or the program name) and exit 0 on both `llm-extract` and `llm-extract-mcp`. `llm-extract-mcp` previously printed nothing, and `-V` was rejected as an unknown shorthand flag.
 - Under `--axi`, errors are now printed on stdout as a TOON document (`error`, `message` and a `help[]` list of next steps) instead of on stderr, and stderr stays empty. This covers a missing API key, a bad URL, a failed `fetch`, an unknown command (which also lists the commands) and an unknown flag (which is named, lists the command's valid flags in `flags[]`, and exits 2 before any network or model call). Without `--axi`, errors stay on stderr as before.
