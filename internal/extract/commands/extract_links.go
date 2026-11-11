@@ -131,7 +131,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 
 	// Validate URL
 	if !isURL(extractLinksURL) {
-		return fmt.Errorf("invalid URL: must start with http:// or https://")
+		return errInvalidURL
 	}
 
 	result := ExtractLinksResult{
@@ -170,7 +170,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	// The output already carries the error; returning it as well is what makes
 	// the exit code non-zero.
 	if result.Error != "" {
-		return errors.New(result.Error)
+		return reportedError{errors.New(result.Error)}
 	}
 	return nil
 }

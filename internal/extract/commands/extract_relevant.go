@@ -210,9 +210,14 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// The output already carries the error; returning it as well is what makes
-	// the exit code non-zero.
+	// the exit code non-zero. Only stdout output counts as reported: with -o
+	// the error went to the file, and stdout carries just the summary.
 	if result.Error != "" {
-		return errors.New(result.Error)
+		err := errors.New(result.Error)
+		if extractRelevantOutput == "" {
+			return reportedError{err}
+		}
+		return err
 	}
 	return nil
 }

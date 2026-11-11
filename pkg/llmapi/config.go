@@ -32,10 +32,14 @@ func GetAPIConfig() *APIConfig {
 	return config
 }
 
+// ErrAPIKeyRequired is what Validate returns when no key is set, so a caller
+// can tell a missing key from any other failure without matching its text.
+var ErrAPIKeyRequired = errors.New("API key is required: set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable")
+
 // Validate checks that required configuration values are present.
 func (c *APIConfig) Validate() error {
 	if c.APIKey == "" {
-		return errors.New("API key is required: set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable")
+		return ErrAPIKeyRequired
 	}
 	return nil
 }

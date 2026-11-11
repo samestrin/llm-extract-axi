@@ -3,11 +3,14 @@ package commands
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -231,11 +234,116 @@ func run(args []string, stdout, stderr io.Writer) int {
 	RootCmd.SetArgs(args)
 	RootCmd.SetOut(stdout)
 	RootCmd.SetErr(stderr)
-	if err := RootCmd.Execute(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return output.ExitCodeFor(err)
+	cmd, err := RootCmd.ExecuteC()
+	if err == nil {
+		return 0
 	}
-	return 0
+	code := output.ExitCodeFor(err)
+	if !wantAXI(args, code) {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return code
+	}
+	// Under --axi the error is on stdout in TOON, the encoding a success would
+	// have used, so a caller reading one stream learns that the command failed
+	// and what to do next. A result that already carries its error is not
+	// printed twice: two documents would not decode as one.
+	var reported reportedError
+	if !errors.As(err, &reported) {
+		_ = output.EncodeAXI(stdout, axiErrorDoc(cmd, err, code))
+	}
+	return code
+}
+
+// errInvalidURL is the error for a URL that is not http or https.
+var errInvalidURL = errors.New("invalid URL: must start with http:// or https://")
+
+// reportedError is an error a command has already printed as part of its
+// result. It still sets the exit code; under --axi it is not printed again.
+type reportedError struct{ error }
+
+func (e reportedError) Unwrap() error { return e.error }
+
+// wantAXI reports whether this run's error is printed as TOON. A parsed flag
+// is the answer when there is one. When parsing stopped at a malformed
+// invocation, --axi may sit after the bad flag and never have been read, so
+// the arguments are scanned for it instead.
+func wantAXI(args []string, code int) bool {
+	if f := RootCmd.PersistentFlags().Lookup("axi"); f != nil && f.Changed {
+		return GlobalAXIOutput
+	}
+	return code == int(goaxi.ExitUsage) && argsWantAXI(args)
+}
+
+// argsWantAXI scans args for --axi the way pflag would read it: the last
+// occurrence wins, a value after = is a bool, and nothing after "--" is a flag.
+func argsWantAXI(args []string) bool {
+	want := false
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if a == "--axi" {
+			want = true
+		} else if v, ok := strings.CutPrefix(a, "--axi="); ok {
+			b, err := strconv.ParseBool(v)
+			want = err == nil && b
+		}
+	}
+	return want
+}
+
+// axiErrorDoc builds the TOON error for err: the {error, message} shape of
+// Formatter.PrintError, plus what a caller needs to correct itself. A
+// malformed invocation lists what cmd accepts; every error carries help[].
+func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
+	doc := map[string]any{"error": true, "message": err.Error()}
+	usage := "Run '" + cmd.CommandPath() + " --help' for usage"
+	var help []string
+	switch {
+	case strings.Contains(err.Error(), "unknown command "):
+		doc["commands"] = commandNames(cmd)
+		help = []string{"Run '" + cmd.CommandPath() + " --help' to see the commands"}
+	case code == int(goaxi.ExitUsage):
+		doc["flags"] = flagNames(cmd)
+		help = []string{usage}
+	case errors.Is(err, llmapi.ErrAPIKeyRequired):
+		help = []string{"Set OPENAI_API_KEY or ANTHROPIC_API_KEY, then run the command again", usage}
+	case errors.Is(err, errInvalidURL):
+		help = []string{"Pass a URL that starts with http:// or https://", usage}
+	default:
+		help = []string{usage}
+	}
+	doc["help"] = help
+	return doc
+}
+
+// commandNames lists the commands a caller can run under cmd.
+func commandNames(cmd *cobra.Command) []string {
+	var names []string
+	for _, c := range cmd.Commands() {
+		if c.IsAvailableCommand() {
+			names = append(names, c.Name())
+		}
+	}
+	return names
+}
+
+// flagNames lists every flag cmd accepts, its own and those it inherits, as
+// --name, sorted.
+func flagNames(cmd *cobra.Command) []string {
+	seen := map[string]bool{}
+	var names []string
+	add := func(f *pflag.Flag) {
+		if f.Hidden || seen[f.Name] {
+			return
+		}
+		seen[f.Name] = true
+		names = append(names, "--"+f.Name)
+	}
+	cmd.LocalFlags().VisitAll(add)
+	cmd.InheritedFlags().VisitAll(add)
+	sort.Strings(names)
+	return names
 }
 
 // resetFlags returns every flag on c and its subcommands to its default.
