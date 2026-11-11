@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -283,7 +284,12 @@ func fetchAndExtractLinks(targetURL string, timeout int) ([]LinkInfo, error) {
 		return nil, fmt.Errorf("HTTP error: %s", resp.Status)
 	}
 
-	return extractLinksFromHTML(resp.Body, targetURL)
+	body, err := readCappedBody(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return extractLinksFromHTML(bytes.NewReader(body), targetURL)
 }
 
 // extractLinksFromHTML parses HTML and extracts links with context and scoring

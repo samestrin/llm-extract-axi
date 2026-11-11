@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -313,18 +314,40 @@ func fetchURL(url string, timeout int) (string, error) {
 
 	contentType := resp.Header.Get("Content-Type")
 
+	body, err := readCappedBody(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
 	// Check if it's HTML content
 	if strings.Contains(contentType, "text/html") || strings.Contains(contentType, "application/xhtml") {
-		return htmlToText(resp.Body)
+		return htmlToText(bytes.NewReader(body))
 	}
 
 	// For non-HTML content, read as-is
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
 	return string(body), nil
+}
+
+// readCappedBody reads a response body of at most maxRemoteBodyBytes. It reads
+// one byte past the cap, as the fetch tier does: if that byte arrives the body
+// is larger than the cap and the read is an error, never a truncated page
+// handed on as if whole. LimitReader bounds memory against an endless body.
+func readCappedBody(r io.Reader) ([]byte, error) {
+	limit := maxRemoteBodyBytes
+	readN := int64(limit)
+	// Guard the +1 against overflow at the maximum cap, which would wrap
+	// negative and make LimitReader return an empty success.
+	if readN < math.MaxInt64 {
+		readN++
+	}
+	body, err := io.ReadAll(io.LimitReader(r, readN))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(body) > limit {
+		return nil, fmt.Errorf("%w: body exceeds %d-byte cap (raise it with FETCH_MAX_BYTES)", fetch.ErrTooLarge, limit)
+	}
+	return body, nil
 }
 
 // htmlToText converts HTML content to clean plain text

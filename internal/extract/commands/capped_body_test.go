@@ -2,12 +2,14 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 )
 
 // testBodyCap is the cap the tests below lower maxRemoteBodyBytes to, so no
@@ -163,5 +165,15 @@ func TestRemoteBodyCapComesFromFetchConfig(t *testing.T) {
 	t.Setenv("FETCH_MAX_BYTES", "4096")
 	if got := loadRemoteBodyCap(); got != 4096 {
 		t.Errorf("loadRemoteBodyCap() = %d, want 4096", got)
+	}
+}
+
+// Defends the read-error path: a body that fails mid-read is an error, not
+// the bytes read so far passed on as the whole page.
+func TestReadCappedBodyReportsAReadError(t *testing.T) {
+	lowerBodyCap(t)
+	body, err := readCappedBody(iotest.ErrReader(errors.New("connection reset")))
+	if err == nil || !strings.Contains(err.Error(), "connection reset") || body != nil {
+		t.Errorf("readCappedBody = %q, %v; want the read error", body, err)
 	}
 }
