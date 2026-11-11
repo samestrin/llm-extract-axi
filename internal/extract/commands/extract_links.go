@@ -60,6 +60,8 @@ type ExtractLinksResult struct {
 	BS        *int64 `json:"bs,omitempty"`
 	Error     string `json:"error,omitempty"`
 	E         string `json:"e,omitempty"`
+	// Help is next steps, set only under --axi; --json never carries it.
+	Help []string `json:"help,omitempty"`
 }
 
 // noLinksMessage is the explicit zero-result message.
@@ -163,6 +165,9 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 		}
 	}
 	result.Model, result.BytesSent = modelUse(llmapi.GetAPIConfig().Model)
+	if GlobalAXIOutput {
+		result.Help = extractLinksHelp(result)
+	}
 
 	if err := outputExtractLinksResult(cmd, result); err != nil {
 		return err
@@ -173,6 +178,22 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 		return reportedError{errors.New(result.Error)}
 	}
 	return nil
+}
+
+// extractLinksHelp is the help[] block under --axi: what to run next after an
+// error, an empty result, or a list.
+func extractLinksHelp(result ExtractLinksResult) []string {
+	const usage = "Run 'llm-extract extract-links --help' for usage"
+	switch {
+	case result.Error != "" && strings.HasPrefix(result.Error, "LLM ranking failed"):
+		return []string{"Check OPENAI_API_KEY or ANTHROPIC_API_KEY, or drop --context to rank by page position without a model", usage}
+	case result.Error != "":
+		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
+	case len(result.Links) == 0:
+		return []string{"Read the page text instead: llm-extract extract-relevant --path '" + result.URL + "' --context '<what you need>'"}
+	default:
+		return []string{"Read the top link: llm-extract extract-relevant --path '" + result.Links[0].Href + "' --context '<what you need>'"}
+	}
 }
 
 // fetchAndExtractLinks fetches a URL and extracts all links with ranking
@@ -549,13 +570,14 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 			}
 		}
 		finalResult = ExtractLinksResult{
-			U:   result.URL,
-			L:   minLinks,
-			N:   result.Total,
-			Msg: result.Message,
-			M:   result.Model,
-			BS:  result.BytesSent,
-			E:   result.Error,
+			U:    result.URL,
+			L:    minLinks,
+			N:    result.Total,
+			Msg:  result.Message,
+			M:    result.Model,
+			BS:   result.BytesSent,
+			E:    result.Error,
+			Help: result.Help,
 		}
 	} else {
 		finalResult = result
