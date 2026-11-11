@@ -257,7 +257,7 @@ func isURL(path string) bool {
 
 // processURL fetches and processes content from a URL
 func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result *ExtractRelevantResult) error {
-	content, err := fetchURL(url, extractRelevantTimeout)
+	content, err := fetchURL(cmd.Context(), url, extractRelevantTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to fetch URL: %w", err)
 	}
@@ -287,13 +287,15 @@ func loadRemoteBodyCap() int {
 	return fetch.LoadConfig().MaxBodyBytes
 }
 
-// fetchURL fetches content from a URL and converts HTML to plain text
-func fetchURL(url string, timeout int) (string, error) {
+// fetchURL fetches content from a URL and converts HTML to plain text. The
+// request runs under ctx, so a cancelled run stops it; the client timeout
+// still bounds a single fetch.
+func fetchURL(ctx context.Context, url string, timeout int) (string, error) {
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 	}
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}

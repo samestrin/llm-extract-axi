@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -782,7 +783,7 @@ func TestParseLLMRankings_InvalidJSON(t *testing.T) {
 func TestRankLinksWithLLM_EmptyLinks(t *testing.T) {
 	links := []LinkInfo{}
 
-	result, err := rankLinksWithLLM(links, "test context", 30)
+	result, err := rankLinksWithLLM(context.Background(), links, "test context", 30)
 	if err != nil {
 		t.Fatalf("rankLinksWithLLM failed: %v", err)
 	}
