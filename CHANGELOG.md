@@ -6,11 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Documentation: the README `Limits` section now lists every exception from the AXI catalog entry (adding plain-mode errors staying on stderr, and `setup` having no Codex or OpenCode target and no session-end hook); `docs/axi-audit.md` and `docs/axi-catalog-entry.yaml` now use one exception numbering (1-5, in principle order) and drop internal wording from the public docs.
+
 ## [1.1.0] - 2026-11-11
 
 ### Added
 
-- `docs/axi-audit.md`: a principle-by-principle audit against the ten AXI principles, each claim with a `file:line` or a named test, carrying the four stated exceptions (`fetch` is not TOON, `fetch` has no `--full`, `setup` has no Codex or OpenCode target and no session-end hook, plain-mode errors stay on stderr).
+- `docs/axi-audit.md`: a principle-by-principle audit against the ten AXI principles, each claim with a `file:line` or a named test, carrying the five stated exceptions (`fetch` is not TOON, `fetch` has no `--full`, plain-mode errors stay on stderr, `setup` has no Codex or OpenCode target and no session-end hook, `help[]` is `--axi` only).
 - `extract-links --fields <list>` chooses which of `href`, `text`, `score`, `section` and `context` each link carries, in text, `--json` and `--axi`. An unknown field is a usage error (exit 2) that lists the valid ones.
 - The Agent Skill is now committed at `integrations/claude-code/skill/SKILL.md`, so `npx skills add samestrin/llm-extract-axi --skill llm-extract` works. A test keeps it identical to the skill `llm-extract setup` writes.
 
