@@ -11,8 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `extract-links --fields <list>` chooses which of `href`, `text`, `score`, `section` and `context` each link carries, in text, `--json` and `--axi`. An unknown field is a usage error (exit 2) that lists the valid ones.
 - The Agent Skill is now committed at `integrations/claude-code/skill/SKILL.md`, so `npx skills add samestrin/llm-extract-axi --skill llm-extract` works. A test keeps it identical to the skill `llm-extract setup` writes.
 
+- `extract-links` and `extract-relevant` now cap how much of a page body is read into memory, the same way `fetch` already does. A body larger than the cap is an error (`response body exceeds size cap`), never a truncated page reported as success. The cap is set with `--max-bytes` or `FETCH_MAX_BYTES` and defaults to 16 MiB.
+
 ### Changed
 
+- `extract-links` and the page fetch inside `extract-relevant` now stop on cancellation instead of running to completion, so an interrupted run returns promptly rather than finishing a download nobody is waiting for.
 - `llm-extract` with no arguments now reports the configuration a run would use — whether an API key is set, the model, the base URL (with any userinfo, query or fragment dropped, where a token may sit) and the fetch size cap — alongside the command reach table. Under `--axi` the home view is one TOON document with a `help[]` list of next steps. It still makes no network or model call.
 - Under `--axi`, `extract-links` and `extract-relevant` now carry a `help[]` list of next steps: a concrete next command on an empty result, recovery steps on an error, and one next step after a successful result. `--json` output is unchanged.
 - `extract-links` rows now hold four fields by default (`href`, `text`, `score`, `section`); `context` is dropped from the default and stays available with `--fields context`.
