@@ -3,6 +3,8 @@ package commands
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -113,7 +115,48 @@ func TestAXIErrorsGoToStdoutAsTOON(t *testing.T) {
 			if help := strings.Join(strs(t, doc, "help"), "\n"); !strings.Contains(help, tc.help) {
 				t.Errorf("help %q does not mention %q", help, tc.help)
 			}
+			// The README promises an unknown command lists the commands.
+			if tc.name == "unknown command" {
+				commands := strs(t, doc, "commands")
+				for _, c := range []string{"fetch", "extract-links", "extract-relevant", "setup"} {
+					if !contains(commands, c) {
+						t.Errorf("commands %v does not list %s", commands, c)
+					}
+				}
+			}
 		})
+	}
+}
+
+// Defends the -o branch of extract-relevant: the error went to the file, not
+// stdout, so it is not "already reported" and run() must still print the TOON
+// error. Marking it reported would leave stdout holding only the plain summary
+// of a failed run, with nothing saying it failed.
+func TestAXIExtractRelevantOutputFileFailureStillPrintsError(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "dummy")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	out := filepath.Join(t.TempDir(), "out.md")
+	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", notFoundPage(t),
+		"--context", "c", "-o", out, "--axi")
+	if code != 1 {
+		t.Errorf("exit %d, want 1", code)
+	}
+	if stderr != "" {
+		t.Errorf("stderr is not empty under --axi: %q", stderr)
+	}
+	written, err := os.ReadFile(out)
+	if err != nil || !strings.Contains(string(written), "404") {
+		t.Errorf("the output file does not carry the error: %v %q", err, written)
+	}
+	// The plain -o summary comes first (filed as debt); the TOON error is
+	// what follows it.
+	i := strings.Index(stdout, "error: true")
+	if i < 0 {
+		t.Fatalf("no TOON error on stdout:\n%s", stdout)
+	}
+	doc := axiError(t, stdout[i:])
+	if msg, _ := doc["message"].(string); !strings.Contains(msg, "404") {
+		t.Errorf("message %q does not carry the 404", msg)
 	}
 }
 

@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - `-v`, `-V` and `--version` now print the bare version (`1.0.1`, without a leading `v` or the program name) and exit 0 on both `llm-extract` and `llm-extract-mcp`. `llm-extract-mcp` previously printed nothing, and `-V` was rejected as an unknown shorthand flag.
+- Under `--axi`, errors are now printed on stdout as a TOON document (`error`, `message` and a `help[]` list of next steps) instead of on stderr, and stderr stays empty. This covers a missing API key, a bad URL, a failed `fetch`, an unknown command (which also lists the commands) and an unknown flag (which is named, lists the command's valid flags in `flags[]`, and exits 2 before any network or model call). Without `--axi`, errors stay on stderr as before.
 
 ## [1.0.1] - 2026-11-10
 
