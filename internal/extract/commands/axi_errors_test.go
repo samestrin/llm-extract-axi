@@ -130,8 +130,10 @@ func TestAXIErrorsGoToStdoutAsTOON(t *testing.T) {
 
 // Defends the -o branch of extract-relevant: the error went to the file, not
 // stdout, so it is not "already reported" and run() must still print the TOON
-// error. Marking it reported would leave stdout holding only the plain summary
-// of a failed run, with nothing saying it failed.
+// error. Marking it reported would leave stdout holding nothing that says the
+// run failed. It also defends the whole stream: the plain -o summary used to
+// print before the error document, so stdout was prose followed by TOON and
+// decoded as neither (release gate F2).
 func TestAXIExtractRelevantOutputFileFailureStillPrintsError(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "dummy")
 	t.Setenv("ANTHROPIC_API_KEY", "")
@@ -148,15 +150,19 @@ func TestAXIExtractRelevantOutputFileFailureStillPrintsError(t *testing.T) {
 	if err != nil || !strings.Contains(string(written), "404") {
 		t.Errorf("the output file does not carry the error: %v %q", err, written)
 	}
-	// The plain -o summary comes first (filed as debt); the TOON error is
-	// what follows it.
-	i := strings.Index(stdout, "error: true")
-	if i < 0 {
-		t.Fatalf("no TOON error on stdout:\n%s", stdout)
-	}
-	doc := axiError(t, stdout[i:])
+	noProseSummary(t, stdout)
+	// The whole stream, not a slice of it: one decodable TOON document.
+	doc := axiError(t, stdout)
 	if msg, _ := doc["message"].(string); !strings.Contains(msg, "404") {
 		t.Errorf("message %q does not carry the 404", msg)
+	}
+	// Two concatenated TOON documents decode without error (the last wins), so
+	// decoding alone does not prove there is only one.
+	if n := strings.Count(stdout, "error: true"); n != 1 {
+		t.Errorf("stdout holds %d error documents, want 1:\n%s", n, stdout)
+	}
+	if n := strings.Count(stdout, "404"); n != 1 {
+		t.Errorf("the error is printed %d times, want 1:\n%s", n, stdout)
 	}
 }
 
