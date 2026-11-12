@@ -50,6 +50,29 @@ func noProseSummary(t *testing.T, stdout string) {
 	}
 }
 
+// Defends the other failure at the same -o boundary: the file cannot be
+// written. Under --axi stdout is still one TOON error document with no prose in
+// front of it, and the exit code says the run failed.
+func TestAXIExtractRelevantOutputFileWriteFailureIsOneTOONDocument(t *testing.T) {
+	src, _ := extractingFile(t, "the extracted passage")
+	dst := filepath.Join(t.TempDir(), "no-such-dir", "out.md")
+	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "-o", dst, "--axi")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr is not empty under --axi: %q", stderr)
+	}
+	noProseSummary(t, stdout)
+	doc := axiError(t, stdout)
+	if msg, _ := doc["message"].(string); !strings.Contains(msg, "failed to write output") {
+		t.Errorf("message %q does not name the write failure", msg)
+	}
+	if n := strings.Count(stdout, "error: true"); n != 1 {
+		t.Errorf("stdout holds %d error documents, want 1:\n%s", n, stdout)
+	}
+}
+
 // Defends the successful -o run under --axi: stdout is one TOON document that
 // still reports the total and a next step, while the passages stay in the file
 // (-o exists to keep content out of the caller's context). Dropping the prose
