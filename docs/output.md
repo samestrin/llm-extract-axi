@@ -15,6 +15,16 @@ When a model ran, the `--json`, `--min` and `--axi` output reports `model` and `
 
 Running `llm-extract` with no arguments prints the path of the binary (home shown as `~`), a one-line description, the network/model reach table and the configuration a run would use: whether an API key is set (the key itself is never shown), the model, the base URL (with any user, password or query string removed) and the fetch size cap. It makes no network or model call. `llm-extract --axi` prints the same view as TOON, with a `help[]` list of next steps.
 
+## Saving to a file (`-o`)
+
+`extract-relevant -o FILE` writes the extraction to FILE. What stdout carries depends on the mode:
+
+- Text (default): a three-line summary — `Extracted content written to: <file>`, `Files processed: <n>/<total>`, `Processing time: <seconds>`.
+- `--json` and `--axi`: one structured document and nothing else — the result without the passages, which are in FILE (keeping content out of the caller's context is what `-o` is for). It still carries `total`, `total_files`, `processed_files` and `processing_time_s`, `model` and `bytes_sent` when a model ran, the `message` on an empty result, and `help[]` under `--axi`.
+- A failed run with `-o` under `--axi` prints the single `error`/`message`/`help[]` document below instead of the result, so stdout is always one decodable TOON document and stderr stays empty. The error is also written to FILE. Under `--json` the result document carries the `error` field and the reason is on stderr, as without `-o`.
+
+The prose summary never reaches stdout under `--axi` or `--json`: prose in front of a structured document makes the single stream decode as neither.
+
 ## Empty results
 
 A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and no total. The two never mix: `total` present means the run succeeded, `error` present means it did not.

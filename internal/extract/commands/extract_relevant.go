@@ -218,8 +218,9 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// The output already carries the error; returning it as well is what makes
-	// the exit code non-zero. Only stdout output counts as reported: with -o
-	// the error went to the file, and stdout carries just the summary.
+	// the exit code non-zero. Only a result printed on stdout counts as
+	// reported: with -o the error went to the file, and under --axi the -o
+	// branch prints nothing on a failure, so run() prints the error document.
 	if result.Error != "" {
 		err := errors.New(result.Error)
 		if extractRelevantOutput == "" {
@@ -666,6 +667,23 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 
 		if err := os.WriteFile(extractRelevantOutput, []byte(outputContent), 0644); err != nil {
 			return fmt.Errorf("failed to write output: %w", err)
+		}
+		// Under --axi or --json stdout is one structured document and nothing
+		// else. The prose summary below would sit in front of the TOON error
+		// run() appends on a failure, leaving a stream that decodes as neither.
+		// The document printed instead is the result without the passages: those
+		// are in the file, which is what -o is for, while the total, the empty
+		// state and help[] still reach the caller.
+		if GlobalAXIOutput || extractRelevantJSON {
+			// A failed run under --axi is reported by run()'s error document;
+			// printing the result as well would put two documents on stdout.
+			if GlobalAXIOutput && result.Error != "" {
+				return nil
+			}
+			ack := finalResult
+			ack.ExtractedParts, ack.EP = nil, nil
+			formatter := output.New(extractRelevantJSON, extractRelevantMinimal, cmd.OutOrStdout())
+			return formatter.Print(ack, nil)
 		}
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Extracted content written to: %s\n", extractRelevantOutput)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Files processed: %d/%d\n", result.ProcessedFiles, result.TotalFiles)

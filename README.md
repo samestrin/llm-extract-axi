@@ -132,7 +132,7 @@ On `fetch`, the flags `--max-bytes`, `--timeout`, `--retries` and `--user-agent`
 
 ## Output and exit codes
 
-Output modes: human-readable text by default, `--json` for structured output, `--min` for a token-optimized form, and `--axi` for TOON. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and no total. When a model ran, the structured output reports `model` and `bytes_sent`.
+Output modes: human-readable text by default, `--json` for structured output, `--min` for a token-optimized form, and `--axi` for TOON. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and no total. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: plain mode prints a short summary, while `--json` and `--axi` print one structured document without the passages.
 
 | Exit code | Meaning |
 | --- | --- |
