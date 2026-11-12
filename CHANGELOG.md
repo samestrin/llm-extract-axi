@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `extract-relevant -o FILE` no longer mixes prose into a structured stdout stream. Under `--axi` a failed run printed the three plain summary lines (`Extracted content written to:`, `Files processed:`, `Processing time:`) before the TOON error document, so a caller reading the single stdout stream could not decode it. The summary is now plain-mode only: under `--axi` and `--json` stdout carries one structured document — the result without the passages, which stay in the file — and a failed run under `--axi` carries the single `error`/`message`/`help[]` document, with stderr still empty. A successful plain run prints the summary as before.
+
 ## [1.1.0] - 2026-11-11
 
 ### Added
