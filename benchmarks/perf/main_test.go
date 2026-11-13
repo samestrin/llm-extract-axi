@@ -224,7 +224,7 @@ func TestRenderComputesEveryFigure(t *testing.T) {
 		"- **Method:** 1 warmup and 3 timed runs per case",
 		"wall-clock per process",
 		"| Cold start | `llm-extract --version` | - | 3 | 2.0 ms | 2.0 ms | 1.0 ms | 3.0 ms |",
-		"| Large input | `llm-extract extract-links` | 5.0 MiB | 3 | 20.0 ms | 23.3 ms | 10.0 ms | 40.0 ms |",
+		"| Large input | `llm-extract extract-links` | 5.2 MB | 3 | 20.0 ms | 23.3 ms | 10.0 ms | 40.0 ms |",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("table has no %q:\n%s", want, md)
@@ -239,7 +239,7 @@ func TestRenderComputesEveryFigure(t *testing.T) {
 	if got := median([]float64{1, 2, 3, 10}); got != 2.5 {
 		t.Errorf("median of an even count = %v, want 2.5", got)
 	}
-	if got := size(15411); got != "15.0 KiB" {
+	if got := size(15411); got != "15.4 KB" {
 		t.Errorf("size(15411) = %q", got)
 	}
 }

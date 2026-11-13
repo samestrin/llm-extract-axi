@@ -439,7 +439,7 @@ func render(rep Report) string {
 	fmt.Fprintf(&b, "- **Version:** llm-extract %s\n", rep.Version)
 	fmt.Fprintf(&b, "- **Date:** %s\n", rep.Date)
 	fmt.Fprintf(&b, "- **Machine:** %s, %d threads, %s RAM, %s (%s), kernel %s\n", m.CPU, m.Threads, ram, m.OS, m.Arch, m.Kernel)
-	fmt.Fprintf(&b, "- **Method:** %d warmup and %d timed runs per case, one after another; each timing is the %s, from start to exit, with the pages served on 127.0.0.1\n\n",
+	fmt.Fprintf(&b, "- **Method:** %d warmup and %d timed runs per case, one after another; timing: %s, from start to exit; pages served on 127.0.0.1\n\n",
 		rep.Method.Warmup, rep.Method.Runs, rep.Method.Clock)
 	fmt.Fprintf(&b, "| Case | Command | Input | Runs | Median | Mean | Min | Max |\n")
 	fmt.Fprintf(&b, "|---|---|---:|---:|---:|---:|---:|---:|\n")
@@ -467,15 +467,16 @@ func median(t []float64) float64 {
 
 func ms(v float64) string { return fmt.Sprintf("%.1f ms", v) }
 
-// size is a byte count for the Input column; a case with no input shows "-".
+// size is a byte count for the Input column, in decimal units as the 5 MB
+// floor is; a case with no input shows "-".
 func size(n int) string {
 	switch {
 	case n == 0:
 		return "-"
-	case n < 1<<20:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	case n < 1_000_000:
+		return fmt.Sprintf("%.1f KB", float64(n)/1e3)
 	default:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+		return fmt.Sprintf("%.1f MB", float64(n)/1e6)
 	}
 }
 
