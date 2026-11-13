@@ -280,9 +280,6 @@ func wantAXI(cmd *cobra.Command, args []string, code int) bool {
 // so `--url --axi` leaves --axi off. cmd is the command the run reached; its
 // flags, own and inherited, say which ones take a value.
 func argsWantAXI(cmd *cobra.Command, args []string) bool {
-	if cmd == nil {
-		cmd = RootCmd
-	}
 	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
 	lookup := func(name string) *pflag.Flag {
 		if f := cmd.Flags().Lookup(name); f != nil {
