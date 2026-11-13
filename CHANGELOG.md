@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A terminal demo in the README shows `llm-extract --version`, `extract-links --axi` and `extract-links --fields href,score` against a local fixture. The session is recorded from `docs/demo/llm-extract.tape`; `docs/demo/README.md` explains how to render the GIF and replay the commands without contacting an outside host.
+- `./benchmarks/perf.sh` measures a release binary offline in three cases: cold start, a typical `extract-links --axi` command and a 5 MB input. It saves every raw timing to `benchmarks/results-performance.json` and generates the Markdown results table from that data, so failed runs do not overwrite the committed results.
+- The README's new Performance section publishes the generated benchmark table with the measured version, date, machine and method. It reports median, mean, minimum and maximum wall-clock times for the same three offline cases, with no hand-entered figures.
+
 ### Fixed
 
 - `extract-relevant -o FILE` no longer mixes prose into a structured stdout stream. Under `--axi` a failed run printed the three plain summary lines (`Extracted content written to:`, `Files processed:`, `Processing time:`) before the TOON error document, so a caller reading the single stdout stream could not decode it. The summary is now plain-mode only: under `--axi` and `--json` stdout carries one structured document — the result without the passages, which stay in the file — and a failed run under `--axi` carries the single `error`/`message`/`help[]` document, with stderr still empty. A successful plain run prints the summary as before.
