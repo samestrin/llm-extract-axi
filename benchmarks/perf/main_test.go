@@ -296,16 +296,17 @@ func TestEnlargeRepeatsTheBody(t *testing.T) {
 // checking its bounds, so a </body> ahead of <body panicked, and a <body with
 // no '>' was repeated into the large page as raw tag text.
 func TestEnlargeRejectsAMalformedBody(t *testing.T) {
-	for _, page := range []string{
-		"</body><body>",
-		"<html></body><body class=x></html>",
-		"<html><body class=x </body></html>",
-		"<html><body</body></html>",
-	} {
-		t.Run(page, func(t *testing.T) {
-			got, err := enlarge([]byte(page), 1000)
-			if err == nil {
-				t.Fatalf("enlarge accepted %q and gave %d bytes", page, len(got))
+	cases := []struct{ page, want string }{
+		{"</body><body>", "comes before"},
+		{"<html></body><body class=x></html>", "comes before"},
+		{"<html><body class=x </body></html>", "not closed"},
+		{"<html><body</body></html>", "not closed"},
+	}
+	for _, c := range cases {
+		t.Run(c.page, func(t *testing.T) {
+			got, err := enlarge([]byte(c.page), 1000)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("enlarge(%q) = %d bytes, err %v; want an error containing %q", c.page, len(got), err, c.want)
 			}
 		})
 	}

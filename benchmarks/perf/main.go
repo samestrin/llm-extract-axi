@@ -334,9 +334,16 @@ func enlarge(page []byte, minBytes int) ([]byte, error) {
 	if open < 0 || end < 0 {
 		return nil, errors.New("the fixture has no <body> to repeat")
 	}
-	start := open + bytes.IndexByte(page[open:], '>') + 1
+	if end < open {
+		return nil, errors.New("the fixture's </body> comes before its <body>")
+	}
+	gt := bytes.IndexByte(page[open:end], '>')
+	if gt < 0 {
+		return nil, errors.New("the fixture's <body> tag is not closed with '>'")
+	}
+	start := open + gt + 1
 	body := page[start:end]
-	if start > end || len(bytes.TrimSpace(body)) == 0 {
+	if len(bytes.TrimSpace(body)) == 0 {
 		return nil, errors.New("the fixture's <body> is empty")
 	}
 	var b bytes.Buffer
