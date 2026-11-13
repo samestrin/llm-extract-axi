@@ -239,7 +239,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	code := output.ExitCodeFor(err)
-	if !wantAXI(args, code) {
+	if !wantAXI(cmd, args, code) {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return code
 	}
@@ -267,26 +267,67 @@ func (e reportedError) Unwrap() error { return e.error }
 // is the answer when there is one. When parsing stopped at a malformed
 // invocation, --axi may sit after the bad flag and never have been read, so
 // the arguments are scanned for it instead.
-func wantAXI(args []string, code int) bool {
+func wantAXI(cmd *cobra.Command, args []string, code int) bool {
 	if f := RootCmd.PersistentFlags().Lookup("axi"); f != nil && f.Changed {
 		return GlobalAXIOutput
 	}
-	return code == int(goaxi.ExitUsage) && argsWantAXI(args)
+	return code == int(goaxi.ExitUsage) && argsWantAXI(cmd, args)
 }
 
 // argsWantAXI scans args for --axi the way pflag would read it: the last
-// occurrence wins, a value after = is a bool, and nothing after "--" is a flag.
-func argsWantAXI(args []string) bool {
-	want := false
-	for _, a := range args {
-		if a == "--" {
-			break
+// occurrence wins, a value after = is a bool, nothing after "--" is a flag,
+// and the argument after a flag that takes a value is that value, not a flag,
+// so `--url --axi` leaves --axi off. cmd is the command the run reached; its
+// flags, own and inherited, say which ones take a value.
+func argsWantAXI(cmd *cobra.Command, args []string) bool {
+	if cmd == nil {
+		cmd = RootCmd
+	}
+	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
+	lookup := func(name string) *pflag.Flag {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			return f
 		}
-		if a == "--axi" {
+		return cmd.InheritedFlags().Lookup(name)
+	}
+	shorthand := func(c string) *pflag.Flag {
+		if f := cmd.Flags().ShorthandLookup(c); f != nil {
+			return f
+		}
+		return cmd.InheritedFlags().ShorthandLookup(c)
+	}
+	want := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return want
+		case a == "--axi":
 			want = true
-		} else if v, ok := strings.CutPrefix(a, "--axi="); ok {
-			b, err := strconv.ParseBool(v)
+		case strings.HasPrefix(a, "--axi="):
+			b, err := strconv.ParseBool(strings.TrimPrefix(a, "--axi="))
 			want = err == nil && b
+		case strings.HasPrefix(a, "--"):
+			if !strings.Contains(a, "=") && takesValue(lookup(a[2:])) {
+				i++
+			}
+		case strings.HasPrefix(a, "-") && len(a) > 1:
+			// A shorthand group such as -abc: the first letter that takes a
+			// value takes the rest of the group, or the next argument when it
+			// is the last letter.
+			group := a[1:]
+			for j := 0; j < len(group); j++ {
+				f := shorthand(group[j : j+1])
+				if f == nil {
+					break
+				}
+				if takesValue(f) {
+					if j == len(group)-1 {
+						i++
+					}
+					break
+				}
+			}
 		}
 	}
 	return want

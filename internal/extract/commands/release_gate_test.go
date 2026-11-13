@@ -13,7 +13,19 @@ import (
 	"testing"
 
 	goaxi "github.com/samestrin/go-axi"
+
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
+
+// axiOffAfter restores the package-global AXI default a run() with --axi
+// leaves on, so a later test that builds a command directly is not TOON.
+func axiOffAfter(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		GlobalAXIOutput = false
+		output.SetDefaultAXI(false)
+	})
+}
 
 // These tests defend the five findings of the v1.1.0 release gate.
 
@@ -92,7 +104,8 @@ func TestExtractRelevantHelpQuotesPath(t *testing.T) {
 		if len(r.ExtractedParts) > 0 {
 			prefix = "Narrow and save it: "
 		}
-		got := runHelpCommand(t, h[0], prefix)
+		// "-o <file>" is a placeholder for the caller to fill, not an argument.
+		got := runHelpCommand(t, strings.TrimSuffix(h[0], " -o <file>"), prefix)
 		target := r.Path + r.URL
 		if len(got) < 3 || got[2] != target {
 			t.Errorf("%q: sh read %q", target, got)
@@ -104,6 +117,7 @@ func TestExtractRelevantHelpQuotesPath(t *testing.T) {
 // value, so `--url --axi` sets url to "--axi" and leaves --axi off. The scan
 // for --axi on a failed parse must agree, or a plain run gets TOON.
 func TestRunValueFlagSwallowsAXI(t *testing.T) {
+	axiOffAfter(t)
 	for _, args := range [][]string{
 		{"extract-links", "--url", "--axi", "--bogus"},
 		{"extract-relevant", "-o", "--axi", "--bogus"},
@@ -149,6 +163,7 @@ func rankingLLM(t *testing.T, score int) *httptest.Server {
 // Defends finding 3: a score of 0 is a score. --fields score must print it in
 // --json, --min and --axi rather than drop it as empty.
 func TestExtractLinksScoreZeroIsPrinted(t *testing.T) {
+	axiOffAfter(t)
 	pointExtractRelevantAt(t, rankingLLM(t, 0))
 	page := linksFieldsServer(t)
 	_, out, _ := runCLI(t, "extract-links", "--url", page, "--context", "c", "--fields", "href,score", "--json")
@@ -209,6 +224,7 @@ func TestDocsDoNotClaimErrorAndTotalNeverMix(t *testing.T) {
 // A result built from a cut input must say so in every mode, and an uncut one
 // must not.
 func TestExtractRelevantReportsTruncatedInput(t *testing.T) {
+	axiOffAfter(t)
 	pointExtractRelevantAt(t, fakeLLM(t, func(string) string { return "kept" }))
 	big := filepath.Join(t.TempDir(), "big.md")
 	if err := os.WriteFile(big, []byte(strings.Repeat("x", 40000)), 0o644); err != nil {
@@ -237,6 +253,11 @@ func TestExtractRelevantReportsTruncatedInput(t *testing.T) {
 	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c")
 	if !strings.HasPrefix(out, "TRUNCATED: ") {
 		t.Errorf("text lacks the truncation note:\n%s", out)
+	}
+	// The plain -o summary is a success report too.
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "-o", filepath.Join(t.TempDir(), "o.txt"))
+	if !strings.Contains(out, "Truncated: model input cut at 30000 bytes") {
+		t.Errorf("-o summary lacks the truncation note:\n%s", out)
 	}
 	_, out, _ = runCLI(t, "extract-relevant", "--path", writeDoc(t), "--context", "c", "--json")
 	if strings.Contains(out, "truncated") {

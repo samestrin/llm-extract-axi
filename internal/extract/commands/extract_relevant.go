@@ -81,6 +81,22 @@ const noRelevantMessage = "no relevant content found"
 // commands share it; each resets it at the start of a run.
 var llmBytesSent atomic.Int64
 
+// llmPrompts and llmPromptsCut count the prompts sent in one run and how many
+// of them were cut to the size limit, so a result built from a cut input says
+// so. Reset with llmBytesSent.
+var llmPrompts, llmPromptsCut atomic.Int64
+
+// maxRelevantPromptBytes is where extract-relevant cuts the prompt it sends
+// the model. Content past the cut is never read.
+const maxRelevantPromptBytes = 30000
+
+// resetModelUse clears the per-run model counters.
+func resetModelUse() {
+	llmBytesSent.Store(0)
+	llmPrompts.Store(0)
+	llmPromptsCut.Store(0)
+}
+
 // modelUse returns the model and byte count to report, or nothing when no
 // prompt was sent, so a run that never reached a model does not claim one.
 func modelUse(model string) (string, *int64) {
@@ -172,7 +188,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		Context: extractRelevantContext,
 	}
 
-	llmBytesSent.Store(0)
+	resetModelUse()
 	var err error
 
 	// Check if target is a URL
@@ -206,6 +222,9 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
 	result.Model, result.BytesSent = modelUse(config.Model)
+	if cut := llmPromptsCut.Load(); cut > 0 {
+		result.Truncated = fmt.Sprintf("model input cut at %d bytes for %d of %d inputs; the content past the cut was not read", maxRelevantPromptBytes, cut, llmPrompts.Load())
+	}
 	if result.Error == "" {
 		total := len(result.ExtractedParts)
 		result.Total = &total
@@ -570,9 +589,12 @@ Rules:
 
 	userPrompt := fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n%s", contextText, content)
 
-	// Truncate content if too long (API limit considerations)
-	if len(userPrompt) > 30000 {
-		userPrompt = userPrompt[:30000] + "\n\n[Content truncated due to length]"
+	// Truncate content if too long (API limit considerations). The run
+	// reports the cut in its result's truncated field.
+	llmPrompts.Add(1)
+	if len(userPrompt) > maxRelevantPromptBytes {
+		userPrompt = userPrompt[:maxRelevantPromptBytes] + "\n\n[Content truncated due to length]"
+		llmPromptsCut.Add(1)
 	}
 
 	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
@@ -645,6 +667,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			Msg:  result.Message,
 			M:    result.Model,
 			BS:   result.BytesSent,
+			Tr:   result.Truncated,
 			Help: result.Help,
 		}
 	} else {
@@ -692,6 +715,9 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Extracted content written to: %s\n", extractRelevantOutput)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Files processed: %d/%d\n", result.ProcessedFiles, result.TotalFiles)
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Processing time: %.2fs\n", result.ProcessingTimeS)
+		if result.Truncated != "" {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Truncated: %s\n", result.Truncated)
+		}
 		return nil
 	}
 
@@ -714,24 +740,31 @@ func extractRelevantHelp(result ExtractRelevantResult) []string {
 	case result.Error != "":
 		return []string{"Fix the cause named in the error, then run the command again", usage}
 	case len(result.ExtractedParts) == 0:
-		return []string{"Broaden the context: llm-extract extract-relevant --path '" + target + "' --context '<broader topic>'"}
+		return []string{"Broaden the context: llm-extract extract-relevant --path " + shellQuote(target) + " --context '<broader topic>'"}
 	default:
-		return []string{"Narrow and save it: llm-extract extract-relevant --path '" + target + "' --context '<narrower topic>' -o <file>"}
+		return []string{"Narrow and save it: llm-extract extract-relevant --path " + shellQuote(target) + " --context '<narrower topic>' -o <file>"}
 	}
 }
 
 // plainExtractResult renders the text output for stdout and -o alike. An error
-// leads, and any extraction kept from a partial directory run follows it, so
-// text mode loses nothing --json carries.
+// and a truncation note lead, and any extraction kept from a partial directory
+// run follows them, so text mode loses nothing --json carries.
 func plainExtractResult(result ExtractRelevantResult) string {
 	parts := strings.Join(result.ExtractedParts, "\n\n---\n\n")
+	var lead string
+	if result.Error != "" {
+		lead = fmt.Sprintf("ERROR: %s\n", result.Error)
+	}
+	if result.Truncated != "" {
+		lead += fmt.Sprintf("TRUNCATED: %s\n", result.Truncated)
+	}
 	switch {
-	case result.Error != "" && parts != "":
-		return fmt.Sprintf("ERROR: %s\n\n%s", result.Error, parts)
+	case lead != "" && parts != "":
+		return lead + "\n" + parts
 	case result.Error != "":
-		return fmt.Sprintf("ERROR: %s\n", result.Error)
+		return lead
 	case parts == "":
-		return noRelevantMessage + "\n"
+		return lead + noRelevantMessage + "\n"
 	default:
 		return parts
 	}

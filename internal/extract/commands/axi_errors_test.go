@@ -278,7 +278,7 @@ func TestArgsWantAXI(t *testing.T) {
 		{[]string{"-axi"}, false},
 	}
 	for _, tc := range cases {
-		if got := argsWantAXI(tc.args); got != tc.want {
+		if got := argsWantAXI(RootCmd, tc.args); got != tc.want {
 			t.Errorf("argsWantAXI(%q) = %v, want %v", tc.args, got, tc.want)
 		}
 	}

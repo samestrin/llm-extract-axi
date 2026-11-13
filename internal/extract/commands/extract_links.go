@@ -62,9 +62,15 @@ func parseLinkFields(spec string) (map[string]bool, error) {
 
 // selectLinkFields blanks every field the caller did not ask for. Each field
 // is omitempty, so a blanked field is absent from text, --json and --axi alike.
+// The score is printed through ShownScore, a pointer, so a score of 0 that was
+// asked for is printed rather than dropped as empty.
 func selectLinkFields(links []LinkInfo, set map[string]bool) []LinkInfo {
 	out := make([]LinkInfo, len(links))
 	for i, l := range links {
+		if set["score"] {
+			score := l.Score
+			l.ShownScore = &score
+		}
 		if !set["href"] {
 			l.Href = ""
 		}
@@ -93,10 +99,13 @@ type LinkInfo struct {
 	T       string `json:"t,omitempty"`
 	Context string `json:"context,omitempty"`
 	C       string `json:"c,omitempty"`
-	Score   int    `json:"score,omitempty"`
-	S       *int   `json:"s,omitempty"`
-	Section string `json:"section,omitempty"`
-	Sec     string `json:"sec,omitempty"`
+	// Score is the ranking score; ShownScore is what is printed as "score",
+	// set only when the score was asked for.
+	Score      int    `json:"-"`
+	ShownScore *int   `json:"score,omitempty"`
+	S          *int   `json:"s,omitempty"`
+	Section    string `json:"section,omitempty"`
+	Sec        string `json:"sec,omitempty"`
 }
 
 // ExtractLinksResult holds the extraction result
@@ -130,6 +139,14 @@ type ExtractLinksResult struct {
 
 // noLinksMessage is the explicit zero-result message.
 const noLinksMessage = "no links found"
+
+// maxRankedLinks and maxLinksPromptBytes bound what --context ranking sends
+// the model: the first maxRankedLinks links, in a prompt cut at
+// maxLinksPromptBytes.
+const (
+	maxRankedLinks      = 100
+	maxLinksPromptBytes = 25000
+)
 
 // newExtractLinksCmd creates the extract-links command
 func newExtractLinksCmd() *cobra.Command {
@@ -209,7 +226,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 		URL: extractLinksURL,
 	}
 
-	llmBytesSent.Store(0)
+	resetModelUse()
 	links, err := fetchAndExtractLinks(cmd.Context(), extractLinksURL, extractLinksTimeout)
 	if err != nil {
 		result.Error = err.Error()
@@ -219,11 +236,13 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			// On failure the heuristic links are kept: they are printed as a
 			// partial result alongside the error, and the exit is non-zero.
 			// All of them: rankLinksWithLLM may return only the first 100.
+			found := len(links)
 			ranked, err := rankLinksWithLLM(cmd.Context(), links, extractLinksContext, extractLinksTimeout)
 			if err != nil {
 				result.Error = fmt.Sprintf("LLM ranking failed: %v", err)
 			} else {
 				links = ranked
+				result.Truncated = rankingTruncation(found)
 			}
 		}
 		result.Links = links
@@ -259,10 +278,30 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
-		return []string{"Read the page text instead: llm-extract extract-relevant --path '" + result.URL + "' --context '<what you need>'"}
+		return []string{"Read the page text instead: llm-extract extract-relevant --path " + shellQuote(result.URL) + " --context '<what you need>'"}
 	default:
-		return []string{"Read the top link: llm-extract extract-relevant --path '" + result.Links[0].Href + "' --context '<what you need>'"}
+		return []string{"Read the top link: llm-extract extract-relevant --path " + shellQuote(result.Links[0].Href) + " --context '<what you need>'"}
 	}
+}
+
+// rankingTruncation says how the model's ranking input was cut down from the
+// found links, or returns "" when it saw them all.
+func rankingTruncation(found int) string {
+	var notes []string
+	if found > maxRankedLinks {
+		notes = append(notes, fmt.Sprintf("the model ranked only the first %d of %d links; the other %d are not in the result", maxRankedLinks, found, found-maxRankedLinks))
+	}
+	if llmPromptsCut.Load() > 0 {
+		notes = append(notes, fmt.Sprintf("the ranking input was cut at %d bytes; links past the cut were not seen by the model and keep their page-position score", maxLinksPromptBytes))
+	}
+	return strings.Join(notes, "; ")
+}
+
+// shellQuote single-quotes s for a POSIX shell. The page controls a link, so
+// an apostrophe in it is closed, escaped and reopened ('\”) rather than left
+// to end the quoting and run the rest as a command.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // fetchAndExtractLinks fetches a URL and extracts all links with ranking. The
@@ -532,10 +571,10 @@ func rankLinksWithLLM(ctx context.Context, links []LinkInfo, contextText string,
 	// Create LLM client
 	client := newLLMClient(config)
 
-	// Prepare links for LLM input (limit to avoid token limits)
-	maxLinks := 100
-	if len(links) > maxLinks {
-		links = links[:maxLinks]
+	// Prepare links for LLM input (limit to avoid token limits). The run
+	// reports the cut in its result's truncated field.
+	if len(links) > maxRankedLinks {
+		links = links[:maxRankedLinks]
 	}
 
 	llmLinks := make([]LLMLinkInput, len(links))
@@ -571,8 +610,10 @@ Do not include any explanation or text outside the JSON.`
 	userPrompt := fmt.Sprintf("Context: %s\n\nLinks to rank:\n%s", contextText, string(linksJSON))
 
 	// Truncate if too long
-	if len(userPrompt) > 25000 {
-		userPrompt = userPrompt[:25000] + "\n...(truncated)"
+	llmPrompts.Add(1)
+	if len(userPrompt) > maxLinksPromptBytes {
+		userPrompt = userPrompt[:maxLinksPromptBytes] + "\n...(truncated)"
+		llmPromptsCut.Add(1)
 	}
 
 	// Call the LLM
@@ -662,6 +703,7 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 			M:    result.Model,
 			BS:   result.BytesSent,
 			E:    result.Error,
+			Tr:   result.Truncated,
 			Help: result.Help,
 		}
 	} else {
@@ -685,6 +727,9 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 		}
 		if result.Message != "" {
 			_, _ = fmt.Fprintf(w, "%s\n", result.Message)
+		}
+		if result.Truncated != "" {
+			_, _ = fmt.Fprintf(w, "Truncated: %s\n", result.Truncated)
 		}
 		if result.Model != "" {
 			_, _ = fmt.Fprintf(w, "Model: %s | Bytes sent: %d\n", result.Model, *result.BytesSent)
