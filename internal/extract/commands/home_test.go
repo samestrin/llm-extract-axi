@@ -76,14 +76,25 @@ func TestRunAXIHomeViewIsTOON(t *testing.T) {
 	if m["about"] != "Fetch outside content and reduce it to what an agent needs." {
 		t.Errorf("about = %v, want the one-sentence description", m["about"])
 	}
-	reachRows, _ := m["reach"].([]any)
-	if len(reachRows) != len(reachTable) {
-		t.Fatalf("reach has %d rows, want %d\n%s", len(reachRows), len(reachTable), out)
+	// The documented contract, written out rather than read from reachTable:
+	// comparing the output with the table it was printed from would pass a
+	// swapped label.
+	wantReach := []map[string]string{
+		{"command": "fetch", "network": "always (fetches the URL)", "model": "never"},
+		{"command": "extract-links", "network": "always (fetches the URL)", "model": "only with --context (LLM link ranking)"},
+		{"command": "extract-relevant", "network": "only when --path is a URL", "model": "always (--context is required)"},
+		{"command": "setup", "network": "never", "model": "never"},
 	}
-	for i, r := range reachTable {
+	reachRows, _ := m["reach"].([]any)
+	if len(reachRows) != len(wantReach) {
+		t.Fatalf("reach has %d rows, want %d\n%s", len(reachRows), len(wantReach), out)
+	}
+	for i, w := range wantReach {
 		row, _ := reachRows[i].(map[string]any)
-		if row["command"] != r.command || row["network"] != r.network || row["model"] != r.model {
-			t.Errorf("reach[%d] = %v, want %+v", i, row, r)
+		for k, v := range w {
+			if row[k] != v {
+				t.Errorf("reach[%d].%s = %v, want %q", i, k, row[k], v)
+			}
 		}
 	}
 	if m["model"] != "test-model" {

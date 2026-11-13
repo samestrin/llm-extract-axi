@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -240,6 +241,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			ranked, err := rankLinksWithLLM(cmd.Context(), links, extractLinksContext, extractLinksTimeout)
 			if err != nil {
 				result.Error = fmt.Sprintf("LLM ranking failed: %v", err)
+				result.Truncated = failedRankingTruncation(found)
 			} else {
 				links = ranked
 				result.Truncated = rankingTruncation(found)
@@ -278,9 +280,9 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
-		return []string{"Read the page text instead: llm-extract extract-relevant --path " + shellQuote(result.URL) + " --context '<what you need>'"}
+		return []string{"Read the page text instead: llm-extract extract-relevant --path " + pathArg(result.URL, "url") + " --context '<what you need>'"}
 	default:
-		return []string{"Read the top link: llm-extract extract-relevant --path " + shellQuote(result.Links[0].Href) + " --context '<what you need>'"}
+		return []string{"Read the top link: llm-extract extract-relevant --path " + pathArg(result.Links[0].Href, "links[0].href") + " --context '<what you need>'"}
 	}
 }
 
@@ -295,6 +297,43 @@ func rankingTruncation(found int) string {
 		notes = append(notes, fmt.Sprintf("the ranking input was cut at %d bytes; links past the cut were not seen by the model and keep their page-position score", maxLinksPromptBytes))
 	}
 	return strings.Join(notes, "; ")
+}
+
+// helpGOOS is the platform whose shell the help[] commands are written for.
+var helpGOOS = runtime.GOOS
+
+// pathArg is the --path argument of a suggested command: value, which a page
+// or caller controls, quoted for the shell. On a POSIX shell that is
+// shellQuote. On Windows no quoting is safe in both cmd.exe and PowerShell:
+// cmd.exe does not treat single quotes as quotes and expands %VAR% inside
+// double quotes, and PowerShell runs $(...) inside double quotes. So there
+// the command names the result field that holds the value, <field>, and
+// carries none of it.
+func pathArg(value, field string) string {
+	if helpGOOS == "windows" {
+		return "<" + field + ">"
+	}
+	return shellQuote(value)
+}
+
+// failedRankingTruncation says how the input of a ranking that failed was cut
+// down, or returns "" when it was not or no prompt was sent. Every found link
+// is still in the result, unranked.
+func failedRankingTruncation(found int) string {
+	if llmPrompts.Load() == 0 {
+		return ""
+	}
+	var notes []string
+	if found > maxRankedLinks {
+		notes = append(notes, fmt.Sprintf("the failed ranking sent the model only the first %d of %d links", maxRankedLinks, found))
+	}
+	if llmPromptsCut.Load() > 0 {
+		notes = append(notes, fmt.Sprintf("the failed ranking's input was cut at %d bytes", maxLinksPromptBytes))
+	}
+	if len(notes) == 0 {
+		return ""
+	}
+	return strings.Join(notes, "; ") + "; every link keeps its page-position score"
 }
 
 // shellQuote single-quotes s for a POSIX shell. The page controls a link, so
