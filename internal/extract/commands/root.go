@@ -263,15 +263,15 @@ type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
 
-// wantAXI reports whether this run's error is printed as TOON. A parsed flag
-// is the answer when there is one. When parsing stopped at a malformed
-// invocation, --axi may sit after the bad flag and never have been read, so
-// the arguments are scanned for it instead.
+// wantAXI reports whether this run's error is printed as TOON. On a malformed
+// invocation parsing may have stopped before the last --axi, so the parsed
+// flag can be stale and the arguments are scanned instead, last occurrence
+// winning. Otherwise the parsed flag is the answer.
 func wantAXI(cmd *cobra.Command, args []string, code int) bool {
-	if f := RootCmd.PersistentFlags().Lookup("axi"); f != nil && f.Changed {
-		return GlobalAXIOutput
+	if code == int(goaxi.ExitUsage) {
+		return argsWantAXI(cmd, args)
 	}
-	return code == int(goaxi.ExitUsage) && argsWantAXI(cmd, args)
+	return GlobalAXIOutput
 }
 
 // argsWantAXI scans args for --axi the way pflag would read it: the last

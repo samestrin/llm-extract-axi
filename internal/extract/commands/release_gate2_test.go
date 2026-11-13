@@ -28,12 +28,12 @@ func helpFor(t *testing.T, goos string) {
 // URL, empty and non-empty), with the prefix each line starts with.
 func allHelpLines(target string) map[string]string {
 	return map[string]string{
-		extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: target}}})[0]:  "Read the top link: ",
-		extractLinksHelp(ExtractLinksResult{URL: target})[0]:                                                     "Read the page text instead: ",
-		extractRelevantHelp(ExtractRelevantResult{URL: target})[0]:                                               "Broaden the context: ",
-		extractRelevantHelp(ExtractRelevantResult{URL: target, ExtractedParts: []string{"x"}})[0]:                "Narrow and save it: ",
-		extractRelevantHelp(ExtractRelevantResult{Path: target})[0]:                                              "Broaden the context: ",
-		extractRelevantHelp(ExtractRelevantResult{Path: target, ExtractedParts: []string{"x"}})[0]:               "Narrow and save it: ",
+		extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: target}}})[0]: "Read the top link: ",
+		extractLinksHelp(ExtractLinksResult{URL: target})[0]:                                                   "Read the page text instead: ",
+		extractRelevantHelp(ExtractRelevantResult{URL: target})[0]:                                             "Broaden the context: ",
+		extractRelevantHelp(ExtractRelevantResult{URL: target, ExtractedParts: []string{"x"}})[0]:              "Narrow and save it: ",
+		extractRelevantHelp(ExtractRelevantResult{Path: target})[0]:                                            "Broaden the context: ",
+		extractRelevantHelp(ExtractRelevantResult{Path: target, ExtractedParts: []string{"x"}})[0]:             "Narrow and save it: ",
 	}
 }
 

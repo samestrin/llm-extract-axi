@@ -45,13 +45,17 @@ The two model commands cut what they send the model, and a result built from a c
 - `extract-relevant` cuts each prompt it sends at 30,000 bytes (the context line and the content together). Content past the cut is not read. In a directory run each file is one prompt.
 - `extract-links --context` sends the model only the first 100 links, in a prompt cut at 25,000 bytes. Links past the first 100 are not in the result; links past the byte cut were not seen by the model and keep their page-position score.
 
-When either happens the result carries a `truncated` note naming the limit and what was cut: the `truncated` field in `--json` and `--axi` (`tr` in `--min`), a `TRUNCATED:` line in `extract-relevant` text (and a `Truncated:` line in its `-o` summary), and a `Truncated:` line in `extract-links` text. The note is on partial results too. A run whose model call succeeded still exits 0; the note is how a caller knows the model read only part of the input. The limits are fixed and there is no `--full`: split a large file, or pass a narrower page.
+When either happens the result carries a `truncated` note naming the limit and what was cut: the `truncated` field in `--json` and `--axi` (`tr` in `--min`), a `TRUNCATED:` line in `extract-relevant` text (and a `Truncated:` line in its `-o` summary), and a `Truncated:` line in `extract-links` text. The note is on partial results too, including a failed `extract-links --context` ranking whose input was cut: there every found link is kept, unranked, with its page-position score. A run whose model call succeeded still exits 0; the note is how a caller knows the model read only part of the input. The limits are fixed and there is no `--full`: split a large file, or pass a narrower page.
 
 A failed `fetch` — a non-2xx status, or a page that needs a browser (a challenge page) — exits non-zero with the reason on stderr, never an empty result. A response larger than the size cap (`--max-bytes` / `FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page, and no partial `--output` file is written.
 
 ## Errors under --axi
 
 Under `--axi`, every error is on stdout as a TOON `error`/`message` object with a `help[]` list of next steps, and stderr stays empty. This covers a failure before work starts (no API key, a bad URL, a failed `fetch`), an unknown command (which lists the commands), and an unknown flag (named in the message, with the command's valid flags in `flags[]`, exit 2, before any network or model call). Without `--axi`, those errors stay on stderr.
+
+## Suggested commands in help[]
+
+A `help[]` step that suggests running `extract-relevant` on a link, page URL or path is written for the shell of the platform the binary runs on. The page controls a link, so on Linux and macOS the value is single-quoted for a POSIX shell, with each apostrophe written as `'\''`, and the command pastes as one argument. On Windows no quoting is safe in both cmd.exe and PowerShell, so the command carries none of the value: it names the result field that holds it, as in `--path <links[0].href>`, `--path <url>` or `--path <path>`, for the caller to fill in. Placeholders such as `<what you need>` are always for the caller to replace.
 
 ## Exit codes
 
