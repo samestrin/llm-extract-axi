@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -296,6 +297,9 @@ func rankingTruncation(found int) string {
 	}
 	return strings.Join(notes, "; ")
 }
+
+// helpGOOS is the platform whose shell the help[] commands are written for.
+var helpGOOS = runtime.GOOS
 
 // shellQuote single-quotes s for a POSIX shell. The page controls a link, so
 // an apostrophe in it is closed, escaped and reopened ('\”) rather than left
