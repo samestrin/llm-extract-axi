@@ -301,16 +301,23 @@ func pathWithout(t *testing.T, hide ...string) string {
 // benchmark's default path failed at the build step there. With sha256sum
 // gone it must checksum with `shasum -a 256`, and with neither it must fail.
 func TestReleaseBuildFallsBackToShasum(t *testing.T) {
-	real, err := exec.LookPath("sha256sum")
+	// The shim needs a real SHA-256 tool behind it: sha256sum on Linux, or
+	// the host's own shasum on stock macOS, which has no sha256sum.
+	backend, err := exec.LookPath("sha256sum")
 	if err != nil {
-		t.Fatalf("the test needs sha256sum to stand behind its shasum shim: %v", err)
+		if backend, err = exec.LookPath("shasum"); err != nil {
+			t.Fatalf("the test needs sha256sum or shasum behind its shasum shim: %v", err)
+		}
+		backend += " -a 256"
+	} else {
+		backend = "\"" + backend + "\""
 	}
 	dir := pathWithout(t, "sha256sum", "shasum")
 	calls := filepath.Join(t.TempDir(), "shasum.calls")
 	// A shasum that accepts only `-a 256`, records each call and does the work
-	// with the real sha256sum, so the test does not depend on perl's shasum.
+	// with the backend above, so the recorded calls and the sums are real work.
 	shim := "#!/bin/sh\n[ \"$1 $2\" = \"-a 256\" ] || { echo \"shasum: want -a 256, got $*\" >&2; exit 9; }\n" +
-		"shift 2\necho \"$*\" >> \"" + calls + "\"\nexec \"" + real + "\" \"$@\"\n"
+		"shift 2\necho \"$*\" >> \"" + calls + "\"\nexec " + backend + " \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "shasum"), []byte(shim), 0o755); err != nil {
 		t.Fatal(err)
 	}

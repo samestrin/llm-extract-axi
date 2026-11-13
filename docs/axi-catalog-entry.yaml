@@ -21,9 +21,9 @@
 #      newer for forks). It runs the pipeline and opens the PR.
 #
 # `reviewed_revision` is the commit docs/axi-audit.md was made against
-# (a886d18, the commit the v1.1.0 release gate ran on and the tag carries).
-# If the tag lands on a later commit, re-check docs/axi-audit.md there and
-# replace both; TestAXIAuditPointersLandOnTheirSymbols and
+# (a886d18, the commit the v1.1.0 release gate ran on, which the v1.1.0 tag
+# will carry once it is cut). If the tag lands on a later commit, re-check
+# docs/axi-audit.md there and replace both; TestAXIAuditPointersLandOnTheirSymbols and
 # TestAXICatalogEntryReviewsTheAuditedRevision fail when they drift apart.
 #
 # The token number is quoted from benchmarks/README.md (4240 raw-page tokens
