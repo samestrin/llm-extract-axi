@@ -158,7 +158,7 @@ func TestReleaseBuildNamesFivePlatforms(t *testing.T) {
 
 // runReleaseBuild runs the release build for the given platforms into a temp
 // directory and returns the directory, the output and whether it succeeded.
-func runReleaseBuild(t *testing.T, version, platforms string) (string, string, bool) {
+func runReleaseBuild(t *testing.T, version, platforms string, env ...string) (string, string, bool) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
 		t.Skip("release-build.sh runs on the Linux release runner")
@@ -169,7 +169,7 @@ func runReleaseBuild(t *testing.T, version, platforms string) (string, string, b
 		t.Fatal(err)
 	}
 	cmd := exec.Command("bash", script, version, out)
-	cmd.Env = append(os.Environ(), "RELEASE_PLATFORMS="+platforms)
+	cmd.Env = append(append(os.Environ(), "RELEASE_PLATFORMS="+platforms), env...)
 	b, err := cmd.CombinedOutput()
 	return out, string(b), err == nil
 }
@@ -262,5 +262,75 @@ func TestReleaseBuildRefuses(t *testing.T) {
 	}
 	if _, out, ok := runReleaseBuild(t, "v1.0.0", "plan9/nosuch"); ok {
 		t.Errorf("release-build.sh succeeded on a platform Go cannot build:\n%s", out)
+	}
+}
+
+// pathWithout links every command on PATH except the named ones into a fresh
+// directory, so a script run with that directory as its PATH finds everything
+// it did before except those commands.
+func pathWithout(t *testing.T, hide ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	hidden := map[string]bool{}
+	for _, h := range hide {
+		hidden[h] = true
+	}
+	for _, p := range filepath.SplitList(os.Getenv("PATH")) {
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if hidden[name] {
+				continue
+			}
+			if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+				continue // an earlier PATH entry wins, as in the shell
+			}
+			if err := os.Symlink(filepath.Join(p, name), filepath.Join(dir, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return dir
+}
+
+// Defends ./benchmarks/perf.sh on stock macOS, which ships shasum and not
+// sha256sum: release-build.sh called sha256sum unconditionally, so the
+// benchmark's default path failed at the build step there. With sha256sum
+// gone it must checksum with `shasum -a 256`, and with neither it must fail.
+func TestReleaseBuildFallsBackToShasum(t *testing.T) {
+	real, err := exec.LookPath("sha256sum")
+	if err != nil {
+		t.Fatalf("the test needs sha256sum to stand behind its shasum shim: %v", err)
+	}
+	dir := pathWithout(t, "sha256sum", "shasum")
+	calls := filepath.Join(t.TempDir(), "shasum.calls")
+	// A shasum that accepts only `-a 256`, records each call and does the work
+	// with the real sha256sum, so the test does not depend on perl's shasum.
+	shim := "#!/bin/sh\n[ \"$1 $2\" = \"-a 256\" ] || { echo \"shasum: want -a 256, got $*\" >&2; exit 9; }\n" +
+		"shift 2\necho \"$*\" >> \"" + calls + "\"\nexec \"" + real + "\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "shasum"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	host := runtime.GOOS + "/" + runtime.GOARCH
+	dist, out, ok := runReleaseBuild(t, "v9.8.7", host, "PATH="+dir)
+	if !ok {
+		t.Fatalf("release-build.sh failed without sha256sum:\n%s", out)
+	}
+	logged, err := os.ReadFile(calls)
+	if err != nil || strings.Count(string(logged), "\n") < 2 {
+		t.Fatalf("shasum -a 256 was not used to write and check the sums (calls: %q, %v)\n%s", logged, err, out)
+	}
+	sums, err := os.ReadFile(filepath.Join(dist, "SHA256SUMS.txt"))
+	if err != nil || strings.Count(string(sums), "\n") != len(binaries) {
+		t.Errorf("SHA256SUMS.txt = %q, %v; want one line per binary", sums, err)
+	}
+
+	if _, out, ok := runReleaseBuild(t, "v9.8.7", host, "PATH="+pathWithout(t, "sha256sum", "shasum")); ok ||
+		!strings.Contains(out, "neither sha256sum nor shasum") {
+		t.Errorf("release-build.sh with no checksum tool: ok=%v, want a failure naming both tools:\n%s", ok, out)
 	}
 }
