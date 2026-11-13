@@ -21,9 +21,10 @@
 #      newer for forks). It runs the pipeline and opens the PR.
 #
 # `reviewed_revision` is the commit docs/axi-audit.md was made against
-# (4a73d42, the code the v1.1.0 release tag will carry). Repo PRs are
-# squash-merged, so tag the release and replace it with the tagged commit
-# after re-checking that docs/axi-audit.md is unchanged.
+# (a886d18, the commit the v1.1.0 release gate ran on, which the v1.1.0 tag
+# will carry once it is cut). If the tag lands on a later commit, re-check
+# docs/axi-audit.md there and replace both; TestAXIAuditPointersLandOnTheirSymbols and
+# TestAXICatalogEntryReviewsTheAuditedRevision fail when they drift apart.
 #
 # The token number is quoted from benchmarks/README.md (4240 raw-page tokens
 # vs 1435 `extract-links --axi` tokens on one 15,411-byte fixture page = 3.0x).
@@ -35,7 +36,7 @@
   description: "Fetches a web page or file and returns only the ranked links or the passages relevant to a given context; on a 15 KB documentation page, `extract-links --axi` printed 3.0x fewer tokens than the page itself (1,435 vs 4,240, offline benchmark, no model call)."
   admission:
     status: exception
-    reviewed_revision: 4a73d427d286e57d004d93ce200d1b036c6cde88
+    reviewed_revision: a886d1875ed9264e241bf32745366c63b83a2004
     reviewed_components:
       - README.md
       - docs/axi-audit.md
@@ -51,8 +52,8 @@
       - internal/extract/commands/setup.go
     source_observations:
       - "docs/axi-audit.md marks principles 2, 4, 5, 8 and 10 as met: extract-links rows default to 4 fields (href, text, score, section) with --fields to pick others; extract-links and extract-relevant always report a total; an empty success carries total 0 and a message (no links found, no relevant content found) while a failure carries an error (a failed extract-links --context ranking keeps the unranked links and their total beside it); a bare run prints the binary path, the network/model reach table and the live configuration with no network or model call; --help exits 0 on the root and all five subcommands."
-      - "--axi is a persistent root flag. The home view, extract-links and extract-relevant emit TOON through output.EncodeAXI; under --axi they also carry help[] next steps, on success, on an empty result and on an error."
-      - "Under --axi, runtime errors are a structured error/message/help[] document on stdout with exit 1 and nothing on stderr. A mid-run failure keeps the partial result and still exits non-zero: unranked heuristic links after a failed --context ranking, and '<n> of <total> files failed' for a partial extract-relevant directory run."
+      - "--axi is a persistent root flag. The home view, extract-links and extract-relevant emit TOON through output.EncodeAXI; under --axi they also carry help[] next steps, on success, on an empty result and on an error. A suggested command quotes a page-controlled link for a POSIX shell on Linux and macOS; on Windows, where no quoting is safe in both cmd.exe and PowerShell, it carries none of the value and names the result field that holds it (--path <links[0].href>)."
+      - "Under --axi, runtime errors are a structured error/message/help[] document on stdout with exit 1 and nothing on stderr. A mid-run failure keeps the partial result and still exits non-zero: unranked heuristic links after a failed --context ranking, and '<n> of <total> files failed' for a partial extract-relevant directory run. With extract-relevant -o FILE under --axi or --json, stdout is still one structured document: the result without the passages (they are in the file), or the error document on a failed --axi run. On a usage error the last --axi on the command line decides the format, read the way pflag reads it."
       - "A malformed invocation (unknown command or unknown flag) exits 2 with a structured error under --axi, before any network or model call; this is the go-axi usage-error convention (goaxi.ExitUsage, pkg/output/exit.go)."
       - "llm-extract setup writes a Claude Code SessionStart hook into .claude/settings.json and an Agent Skill into .claude/skills/llm-extract/SKILL.md; it keeps other settings, is idempotent, has --dry-run and never touches the home directory. Nothing prompts."
       - "fetch prints the whole body up to a configurable size cap (--max-bytes / FETCH_MAX_BYTES, default 16 MiB); a larger body is an error with no partial output. The same cap, set by FETCH_MAX_BYTES (--max-bytes is fetch's flag only), covers extract-links and the extract-relevant page fetch."

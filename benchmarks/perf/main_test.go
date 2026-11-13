@@ -292,6 +292,26 @@ func TestEnlargeRepeatsTheBody(t *testing.T) {
 	}
 }
 
+// Defends -fixture against a malformed page: enlarge sliced the body before
+// checking its bounds, so a </body> ahead of <body panicked, and a <body with
+// no '>' was repeated into the large page as raw tag text.
+func TestEnlargeRejectsAMalformedBody(t *testing.T) {
+	cases := []struct{ page, want string }{
+		{"</body><body>", "comes before"},
+		{"<html></body><body class=x></html>", "comes before"},
+		{"<html><body class=x </body></html>", "not closed"},
+		{"<html><body</body></html>", "not closed"},
+	}
+	for _, c := range cases {
+		t.Run(c.page, func(t *testing.T) {
+			got, err := enlarge([]byte(c.page), 1000)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("enlarge(%q) = %d bytes, err %v; want an error containing %q", c.page, len(got), err, c.want)
+			}
+		})
+	}
+}
+
 // Defends the machine stamp: values are read from the files the host keeps,
 // and an unreadable one stays empty rather than guessed.
 func TestMachineReaders(t *testing.T) {
