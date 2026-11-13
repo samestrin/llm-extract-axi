@@ -120,6 +120,10 @@ type ExtractLinksResult struct {
 	BS        *int64 `json:"bs,omitempty"`
 	Error     string `json:"error,omitempty"`
 	E         string `json:"e,omitempty"`
+	// Truncated says the model ranked a cut-down input: only the first
+	// maxRankedLinks links, or a prompt cut at maxLinksPromptBytes.
+	Truncated string `json:"truncated,omitempty"`
+	Tr        string `json:"tr,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 }

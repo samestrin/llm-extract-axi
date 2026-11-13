@@ -66,6 +66,10 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
+	// Truncated says the model read a cut-down input: a prompt longer than
+	// maxRelevantPromptBytes is cut, and the content past the cut is unread.
+	Truncated string `json:"truncated,omitempty"`
+	Tr        string `json:"tr,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 }
