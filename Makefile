@@ -46,11 +46,13 @@ test-cover: build
 	go test -coverprofile=coverage.txt -covermode=atomic ./...
 	go tool cover -func=coverage.txt | tail -1
 
-# Shell tests for the build/CI scripts (the coverage gate's failure branches).
-# Self-contained: it builds a throwaway module in a temp dir and makes no
-# network call. Wired into CI as its own step.
+# Shell tests for the build/CI scripts (the coverage gate's failure branches)
+# and for benchmarks/perf.sh (a case with zero timings fails the run), against a
+# stub binary. Self-contained: throwaway files in a temp dir, pages served on
+# loopback, no network call. Wired into CI as its own step.
 test-scripts:
 	./scripts/coverage-gate_test.sh
+	./benchmarks/perf_test.sh
 
 # The same 80% gate CI enforces. Measured the way CI measures it and the way
 # AGENTS.md prescribes: cold (`go clean -testcache`) and with the LLM

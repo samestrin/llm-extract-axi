@@ -1,3 +1,7 @@
+# Benchmarks
+
+Two benchmarks, both offline: [tokens](#token-benchmark) (what `extract-links` saves an agent in tokens) and [performance](#performance-benchmark) (how long `llm-extract` takes).
+
 # Token benchmark
 
 How much less an agent reads when it asks `extract-links` for a page's links instead of reading the page.
@@ -46,3 +50,28 @@ The loopback address and port appear in every resolved link. They are replaced w
 ## The fixture
 
 `fixtures/docs-page.html` is a made-up "getting started" page, built like a typical documentation site: inline CSS and scripts, a header nav, a sidebar, an on-this-page list and a footer, with 50 links that `extract-links` keeps once in-page anchors, `mailto:` and duplicates are dropped. A page with more markup per link scores a higher ratio, and a bare list of links a lower one. One page is one data point, not an average.
+
+# Performance benchmark
+
+How long `llm-extract` takes, from the release binary, in three cases:
+
+- **Cold start:** `llm-extract --version`.
+- **Typical command:** `extract-links --axi` on `fixtures/docs-page.html`.
+- **Large input:** `extract-links --axi` on a page of at least 5 MB, built by repeating the fixture's `<body>` (pass `-large page.html` to use another). Its links repeat too and `extract-links` drops duplicates, so this case times reading and parsing a large page, not printing a long list.
+
+The result is [`results-performance.md`](results-performance.md), generated from every raw timing in [`results-performance.json`](results-performance.json). Its header names the version, the date, the machine and the method. It compares `llm-extract` with no other tool.
+
+## Rerun it
+
+From the repository root:
+
+```bash
+./benchmarks/perf.sh            # build the release binary for this machine, time it, write both files
+./benchmarks/perf.sh -render    # regenerate the table from the JSON, timing nothing
+```
+
+`perf.sh` builds with `scripts/release-build.sh`, stamped with `git describe`, then runs `go run ./benchmarks/perf`. Pass `-bin path/to/llm-extract` to time a binary you already have, such as a downloaded release asset, and `-warmup N` or `-runs N` to change the counts (3 and 20). Never edit the table by hand: the next run overwrites it.
+
+Each timing is the wall-clock time of one `llm-extract` process, from start to exit, with the pages served by the benchmark on `127.0.0.1`. No outside host is contacted or timed: that would measure the host, not the tool. The environment is the same as the token benchmark's: no model variables, no `FETCH_*` tuning, and every proxy pointed at a closed local port.
+
+A case that records zero timings fails the run, and so does any process that exits non-zero or finds no links. A failed run writes nothing, so the committed results stay as they were. `perf_test.sh` proves this against a stub binary and runs in CI as part of `make test-scripts`.
