@@ -38,9 +38,6 @@ var (
 	tapeTypeLine  = regexp.MustCompile(`^Type "(.*)" Enter$`)
 	tapeSleepLine = regexp.MustCompile(`^Sleep (\S+)$`)
 	tapeSetLine   = regexp.MustCompile(`^Set (\S+) (\S+)$`)
-	// A version the binary prints from -X, e.g. 1.0.1-19-g68a20d6. It does not
-	// start a line when the replay's `clear` writes its terminal escapes first.
-	versionLine = regexp.MustCompile(`(?:^|[^0-9.])[0-9]+\.[0-9]+\.[0-9]+`)
 )
 
 // tapeCommand is one Type line and whether it sits in a Hide section.
@@ -209,7 +206,19 @@ func (s tapeSession) typedCommandTime() time.Duration {
 // The assertions are on the payload, not just the exit status: a pipeline that
 // fails still exits 0 through head, so the output is what proves it ran.
 func TestDemoTapeCommandsRunAgainstTheBinary(t *testing.T) {
-	binary(t, "llm-extract") // fails, not skips, when ./build is missing
+	bin := binary(t, "llm-extract") // fails, not skips, when ./build is missing
+	// Ask the binary what it prints, so the tape's first command is checked
+	// against that exact line. A pattern for "some dotted number" cannot do
+	// it: the other two commands print the loopback URL 127.0.0.1, whose
+	// 127.0.0 matches, so a --version that printed nothing (or `dev`) passed.
+	versionOut, err := exec.Command(bin, "--version").Output()
+	if err != nil {
+		t.Fatalf("llm-extract --version failed: %v\n%s", err, versionOut)
+	}
+	version := strings.TrimSpace(string(versionOut))
+	if version == "" || version == "dev" {
+		t.Fatalf("llm-extract --version printed %q; the demo must show a stamped version", version)
+	}
 	s := parseDemoTape(t)
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Fatalf("the demo is a bash session and this check replays it; bash is not on PATH: %v", err)
@@ -248,7 +257,7 @@ func TestDemoTapeCommandsRunAgainstTheBinary(t *testing.T) {
 			t.Errorf("replayed output does not contain %q:\n%s", want, out)
 		}
 	}
-	if !versionLine.Match(out) {
-		t.Errorf("replayed output holds no version line:\n%s", out)
+	if !strings.Contains(string(out), version) {
+		t.Errorf("replayed output does not contain the version line %q:\n%s", version, out)
 	}
 }
