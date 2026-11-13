@@ -994,7 +994,7 @@ func TestExtractLinksFieldsSelectsOnlyThose(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := r.Links[0]
-	if l.Href == "" || l.Text == "" || l.Score != 0 || l.Section != "" || l.Context != "" {
+	if l.Href == "" || l.Text == "" || l.ShownScore != nil || l.Section != "" || l.Context != "" {
 		t.Errorf("row is not exactly href,text: %+v", l)
 	}
 	out, err = runLinksFields(t, "--url", u, "--json", "--fields", "context,href")

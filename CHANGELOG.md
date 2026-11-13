@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The `help[]` next step under `--axi` no longer lets a page inject a shell command. `extract-links` and `extract-relevant` single-quoted the link, URL or path without escaping an apostrophe, so a link such as `/safe?q=';id;'` produced a suggested command that ran `id` when pasted into a shell. The argument is now shell-quoted (`'\''` for each apostrophe); an ordinary link prints exactly as before.
+- `--url --axi --bogus` now prints the plain error on stderr, as pflag reads it: the argument after a flag that takes a value is that value, so `--axi` there is the URL, not the flag. The scan for `--axi` after a failed parse used to count it and print TOON.
+- `extract-links --fields score` prints a score of 0 in `--json` and `--axi` instead of dropping it as empty.
+- `extract-relevant` and `extract-links --context` now say when the model read a cut-down input. `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes; a result built from a cut input, partial or not, now carries a `truncated` note (`tr` in `--min`, a `TRUNCATED:`/`Truncated:` line in text mode and in the `-o` summary). The limits are unchanged. `docs/axi-audit.md` Exception 2, the catalog entry, the README and `docs/output.md` no longer claim that no command truncates content.
+- The docs no longer claim that `error` and `total` never mix: a failed `extract-links --context` ranking keeps the unranked links and their `total` beside the `error`. `error` is what marks a failure.
 - `extract-relevant -o FILE` no longer mixes prose into a structured stdout stream. Under `--axi` a failed run printed the three plain summary lines (`Extracted content written to:`, `Files processed:`, `Processing time:`) before the TOON error document, so a caller reading the single stdout stream could not decode it. The summary is now plain-mode only: under `--axi` and `--json` stdout carries one structured document — the result without the passages, which stay in the file — and a failed run under `--axi` carries the single `error`/`message`/`help[]` document, with stderr still empty. A successful plain run prints the summary as before.
 
 ## [1.1.0] - 2026-11-11

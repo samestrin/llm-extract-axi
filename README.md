@@ -138,7 +138,7 @@ On `fetch`, the flags `--max-bytes`, `--timeout`, `--retries` and `--user-agent`
 
 ## Output and exit codes
 
-Output modes: human-readable text by default, `--json` for structured output, `--min` for a token-optimized form, and `--axi` for TOON. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and no total. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: plain mode prints a short summary, while `--json` and `--axi` print one structured document without the passages.
+Output modes: human-readable text by default, `--json` for structured output, `--min` for a token-optimized form, and `--axi` for TOON. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and exits non-zero (a failed `extract-links --context` ranking keeps its links and `total` beside the `error`). A result built from a cut model input carries a `truncated` note. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: plain mode prints a short summary, while `--json` and `--axi` print one structured document without the passages.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -183,6 +183,7 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - `fetch` is a direct HTTP GET only: there is no proxy or browser tier, so a page behind a JavaScript or Cloudflare challenge fails with the reason instead of returning the challenge page.
 - `--format` accepts `raw` only; `text` and `markdown` are rejected.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
+- The model reads a bounded input: `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes. A result built from a cut input carries a `truncated` note; there is no `--full`.
 - `fetch` prints the raw body and ignores `--axi`; TOON applies to the home view, `extract-links` and `extract-relevant`.
 - `help[]` next steps appear only on the home view and on `extract-links` and `extract-relevant` results and errors under `--axi`.
 - Plain-mode errors (neither `--axi` nor `--json`) print on stderr, not stdout; under `--axi` the same error is a structured document on stdout.

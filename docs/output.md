@@ -27,7 +27,7 @@ The prose summary never reaches stdout under `--axi` or `--json`: prose in front
 
 ## Empty results
 
-A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and no total. The two never mix: `total` present means the run succeeded, `error` present means it did not.
+A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and exits non-zero. `error` is what marks a failure, not a missing `total`: a failed `extract-relevant` run and a failed `extract-links` fetch carry no total, but a failed `extract-links --context` ranking keeps the unranked links and their `total` beside the `error` (see partial results below). `total` without `error` means the run succeeded.
 
 ## Failures
 
@@ -37,6 +37,15 @@ A partial result is kept and says it is partial, but the exit is still non-zero:
 
 - When `extract-links --context` ranking fails (for example no API key is set), every unranked heuristic link is printed after `ERROR: LLM ranking failed: <reason>`.
 - When some files in an `extract-relevant` directory run fail, the extractions from the rest are printed and the error reads `<n> of <total> files failed (first: <file>: <reason>)`.
+
+## Truncated model input
+
+The two model commands cut what they send the model, and a result built from a cut input says so:
+
+- `extract-relevant` cuts each prompt it sends at 30,000 bytes (the context line and the content together). Content past the cut is not read. In a directory run each file is one prompt.
+- `extract-links --context` sends the model only the first 100 links, in a prompt cut at 25,000 bytes. Links past the first 100 are not in the result; links past the byte cut were not seen by the model and keep their page-position score.
+
+When either happens the result carries a `truncated` note naming the limit and what was cut: the `truncated` field in `--json` and `--axi` (`tr` in `--min`), a `TRUNCATED:` line in `extract-relevant` text (and a `Truncated:` line in its `-o` summary), and a `Truncated:` line in `extract-links` text. The note is on partial results too. A run whose model call succeeded still exits 0; the note is how a caller knows the model read only part of the input. The limits are fixed and there is no `--full`: split a large file, or pass a narrower page.
 
 A failed `fetch` — a non-2xx status, or a page that needs a browser (a challenge page) — exits non-zero with the reason on stderr, never an empty result. A response larger than the size cap (`--max-bytes` / `FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page, and no partial `--output` file is written.
 
