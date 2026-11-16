@@ -7,8 +7,8 @@ import "path/filepath"
 // settings. Codex runs a SessionStart command's stdout as developer context,
 // and hooks are on by default, so no [features] entry in config.toml is
 // written. Format: https://developers.openai.com/codex/hooks
-func planCodex(dir, command string) ([]plannedWrite, error) {
-	p, err := planHooks(filepath.Join(dir, ".codex", "hooks.json"), command)
+func planCodex(dir, bin string) ([]plannedWrite, error) {
+	p, err := planHooks(filepath.Join(dir, ".codex", "hooks.json"), shellQuote(bin))
 	if err != nil {
 		return nil, err
 	}
