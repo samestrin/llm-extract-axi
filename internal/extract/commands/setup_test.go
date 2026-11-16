@@ -3,15 +3,51 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// setupRun runs `setup --dir dir` with HOME pointed at a temp dir and returns
-// stdout, the exit code and the home dir.
+// setupRun runs `setup` with HOME pointed at a temp dir and llm-extract found
+// on PATH, and returns stdout and the exit code.
 func setupRun(t *testing.T, home string, args ...string) (string, int) {
+	t.Helper()
+	stubHookBinary(t, true, "")
+	return setupExec(t, home, args...)
+}
+
+// setupRunAt is setupRun with llm-extract NOT on PATH and the running binary
+// at exe, so the hook falls back to an absolute path.
+func setupRunAt(t *testing.T, home, exe string, args ...string) (string, int) {
+	t.Helper()
+	stubHookBinary(t, false, exe)
+	return setupExec(t, home, args...)
+}
+
+// stubHookBinary replaces the PATH lookup and the executable path for one
+// test. An empty exe makes os.Executable fail.
+func stubHookBinary(t *testing.T, onPath bool, exe string) {
+	t.Helper()
+	oldLook, oldExe := setupLookPath, setupExecutable
+	t.Cleanup(func() { setupLookPath, setupExecutable = oldLook, oldExe })
+	setupLookPath = func(name string) (string, error) {
+		if onPath {
+			return "/usr/local/bin/" + name, nil
+		}
+		return "", exec.ErrNotFound
+	}
+	setupExecutable = func() (string, error) {
+		if exe == "" {
+			return "", errors.New("executable path unknown")
+		}
+		return exe, nil
+	}
+}
+
+func setupExec(t *testing.T, home string, args ...string) (string, int) {
 	t.Helper()
 	t.Setenv("HOME", home)
 	var out, errb bytes.Buffer
