@@ -20,7 +20,16 @@ func perfTable(text string) []string {
 	return rows
 }
 
-var perfNumber = regexp.MustCompile(`[0-9]+(?:\.[0-9]+)*`)
+var perfBullet = regexp.MustCompile(`(?m)^- \*\*([^*]+):\*\* (.*)$`)
+
+// perfBullets maps each "- **Name:** value" line in text to its value.
+func perfBullets(text string) map[string]string {
+	m := map[string]string{}
+	for _, b := range perfBullet.FindAllStringSubmatch(text, -1) {
+		m[b[1]] = b[2]
+	}
+	return m
+}
 
 // perfMismatches lists every way readme's Performance section differs from
 // the generated results: a table row, or a fact outside the table.
@@ -36,13 +45,23 @@ func perfMismatches(generated, readme string) []string {
 			bad = append(bad, fmt.Sprintf("README Performance table row %d is %q, want the generated row %q", i+1, gotRows[i], wantRows[i]))
 		}
 	}
-	known := map[string]bool{}
-	for _, n := range perfNumber.FindAllString(generated, -1) {
-		known[n] = true
+	// The header facts outside the table are compared as whole bullets: a
+	// number matched against the generated file's numbers passed "4 warmup"
+	// on the 4 in a commit hash.
+	want, got := perfBullets(generated), perfBullets(readme)
+	if len(want) == 0 {
+		bad = append(bad, "benchmarks/results-performance.md holds no - **Name:** bullets")
 	}
-	for _, n := range perfNumber.FindAllString(readme, -1) {
-		if !known[n] {
-			bad = append(bad, fmt.Sprintf("README Performance section names %q, which does not appear in benchmarks/results-performance.md; regenerate with benchmarks/perf.sh", n))
+	for name, w := range want {
+		if g, ok := got[name]; !ok {
+			bad = append(bad, fmt.Sprintf("README Performance section has no %s bullet", name))
+		} else if g != w {
+			bad = append(bad, fmt.Sprintf("README Performance %s is %q, want the generated %q", name, g, w))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			bad = append(bad, fmt.Sprintf("README Performance %s bullet is not in benchmarks/results-performance.md", name))
 		}
 	}
 	return bad
