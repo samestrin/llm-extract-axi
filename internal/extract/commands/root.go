@@ -25,8 +25,8 @@ import (
 
 // Version is stamped at build time by the Makefile with
 // -X github.com/samestrin/llm-extract-axi/internal/extract/commands.Version.
-// It lives here rather than on main because the cobra root reads it, so
-// stamping main would leave `llm-extract --version` reporting this default.
+// It lives here rather than on main because the cobra root reads it. When
+// ldflags did not set it, ResolveVersion reads the go install module version.
 var Version = "dev"
 
 // BareVersion returns v without a leading "v", so a `git describe` stamp such
@@ -226,10 +226,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// A lone version flag is answered here, because cobra's own flag knows
 	// only --version and would reject -V.
 	if len(args) == 1 && IsVersionFlag(args[0]) {
-		_, _ = fmt.Fprintln(stdout, BareVersion(Version))
+		_, _ = fmt.Fprintln(stdout, BareVersion(ResolveVersion(Version)))
 		return 0
 	}
-	RootCmd.Version = BareVersion(Version)
+	RootCmd.Version = BareVersion(ResolveVersion(Version))
 	RootCmd.SetVersionTemplate("{{.Version}}\n")
 	RootCmd.SetArgs(args)
 	RootCmd.SetOut(stdout)

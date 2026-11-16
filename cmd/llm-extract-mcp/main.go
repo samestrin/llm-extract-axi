@@ -14,13 +14,16 @@ import (
 	"github.com/samestrin/llm-extract-axi/internal/extract/mcpserver"
 )
 
-// serverVersion is stamped by the Makefile with -X main.serverVersion.
+// serverVersion is stamped by the Makefile with -X main.serverVersion; when
+// ldflags did not set it, commands.ResolveVersion reads the go install
+// module version.
 var serverVersion = "dev"
 
 func main() {
+	version := commands.ResolveVersion(serverVersion)
 	// Answered before FindBinary and before any server start.
 	if len(os.Args) == 2 && commands.IsVersionFlag(os.Args[1]) {
-		fmt.Println(commands.BareVersion(serverVersion))
+		fmt.Println(commands.BareVersion(version))
 		return
 	}
 	bin, err := mcpserver.FindBinary()
@@ -28,7 +31,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		os.Exit(1)
 	}
-	server := mcpserver.New(bin, serverVersion)
+	server := mcpserver.New(bin, version)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
 		os.Exit(1)

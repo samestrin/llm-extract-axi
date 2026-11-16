@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest` binaries now report the installed release with `--version` (for example `1.1.0`) instead of `dev`: when ldflags did not stamp a version, both `llm-extract` and `llm-extract-mcp` read the module version from the build info, skipping `(devel)`. A version stamped at build time still wins.
+
+### Changed
+
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `4ef2b67`, the commit the `v1.1.0` tag carries; every `file:line` pointer and probe was re-checked there, and the `extract-links --axi` probe quote now names all four default fields.
+- The README's pin-a-version install example now uses `v1.1.0` instead of the stale `v1.0.1`.
+
 ## [1.1.0] - 2026-11-13
 
 ### Added
