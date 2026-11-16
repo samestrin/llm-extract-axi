@@ -112,13 +112,21 @@ func childEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
 		name := strings.ToUpper(kv[:strings.IndexByte(kv+"=", '=')])
-		if strings.HasPrefix(name, "OPENAI_") || strings.HasPrefix(name, "ANTHROPIC_") ||
-			strings.HasSuffix(name, "_PROXY") {
+		if modelVar(name) || strings.HasSuffix(name, "_PROXY") {
 			continue
 		}
 		env = append(env, kv)
 	}
 	return append(env, "HTTP_PROXY="+deadProxy, "HTTPS_PROXY="+deadProxy)
+}
+
+// modelVar reports whether the upper-cased variable name could configure a
+// model call: anything under OPENAI_ or ANTHROPIC_, or a prefixed key or
+// endpoint such as LLM_OPENAI_API_KEY that another tool exports.
+func modelVar(name string) bool {
+	return strings.HasPrefix(name, "OPENAI_") || strings.HasPrefix(name, "ANTHROPIC_") ||
+		strings.HasSuffix(name, "OPENAI_API_KEY") || strings.HasSuffix(name, "ANTHROPIC_API_KEY") ||
+		strings.HasSuffix(name, "OPENAI_BASE_URL")
 }
 
 // countTokens counts the pieces cl100k_base's split pattern cuts s into:
