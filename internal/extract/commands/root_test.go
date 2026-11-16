@@ -267,3 +267,31 @@ func TestRunAXIFlagReachesCommandsAndResets(t *testing.T) {
 		t.Errorf("the previous run's --axi leaked into this one; not JSON:\n%s", js)
 	}
 }
+
+// Defends run() leaving no encoding behind: a default run turns TOON on, and
+// the deferred reset turns it off again, so a command reached directly
+// afterwards (as many tests in this package do) starts from the zero state
+// rather than the last run's TOON.
+func TestRunLeavesTheEncodingAtTheZeroState(t *testing.T) {
+	homeEnv(t)
+	var stdout, stderr bytes.Buffer
+	if code := run(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("exited %d; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "help[") {
+		t.Fatalf("the default run was not TOON, so this test proves nothing:\n%s", stdout.String())
+	}
+	if GlobalAXIOutput {
+		t.Error("GlobalAXIOutput is still true after run() returned")
+	}
+	if output.New(false, false, nil).AXI {
+		t.Error("output's TOON default is still on after run() returned")
+	}
+	var home bytes.Buffer
+	if err := printHome(&home); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(home.String(), "help[") {
+		t.Errorf("a command reached after run() printed the last run's TOON:\n%s", home.String())
+	}
+}

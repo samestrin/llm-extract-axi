@@ -345,3 +345,30 @@ func TestFormatter_Print_Slice(t *testing.T) {
 		t.Error("Expected abbreviated key 'n' in slice items")
 	}
 }
+
+// Defends the rule that an explicit JSON request beats the TOON default:
+// output.New(true, ...) prints JSON even while SetDefaultAXI(true) is in
+// force, and output.New(false, ...) still prints TOON. Without the
+// `&& !jsonOutput` in New, a caller that asks for JSON while the default is
+// on (extract-relevant's -o file writer) would get TOON.
+func TestNewExplicitJSONBeatsTheTOONDefault(t *testing.T) {
+	SetDefaultAXI(true)
+	t.Cleanup(func() { SetDefaultAXI(false) })
+	data := TestOutput{Name: "x", Count: 2}
+
+	var js bytes.Buffer
+	if err := New(true, false, &js).Print(data, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !json.Valid(js.Bytes()) {
+		t.Errorf("New(json=true) under the TOON default printed %q, want JSON", js.String())
+	}
+
+	var toon bytes.Buffer
+	if err := New(false, false, &toon).Print(data, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := toon.String(); json.Valid(toon.Bytes()) || !strings.Contains(got, "name: x") {
+		t.Errorf("New(json=false) under the TOON default printed %q, want TOON", got)
+	}
+}
