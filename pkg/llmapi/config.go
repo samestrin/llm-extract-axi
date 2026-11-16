@@ -61,3 +61,6 @@ func getEnvWithFallbacks(keys ...string) string {
 	}
 	return ""
 }
+
+// ErrBaseURLRequired is a placeholder (red step).
+var ErrBaseURLRequired = errors.New("placeholder")
