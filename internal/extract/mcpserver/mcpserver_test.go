@@ -3,11 +3,16 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // fakeCLI writes a script that echoes its arguments (or fails), standing in
@@ -194,5 +199,70 @@ func TestNonZeroExitWithEmptyStderr(t *testing.T) {
 	got := text(t, r.Content)
 	if !r.IsError || !strings.Contains(got, "llm-extract fetch failed: exit status 1") {
 		t.Errorf("got %+v %s", r, got)
+	}
+}
+
+// buildCLI compiles the real llm-extract into a temp dir, so the MCP tests
+// below see what the shipped CLI prints rather than what a fake script echoes.
+func buildCLI(t *testing.T) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "llm-extract")
+	out, err := exec.Command("go", "build", "-o", bin, "github.com/samestrin/llm-extract-axi/cmd/llm-extract").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	return bin
+}
+
+// mcpLinksPage serves a page with two links, or a 404 when status says so.
+func mcpLinksPage(t *testing.T, status int) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`<html><body><h1><a href="/start">Start here</a></h1><p><a href="/more">More</a></p></body></html>`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// Defends what an MCP caller receives now that TOON is the CLI's default: the
+// server injects no --plain and adds no logic, so a tool result is the CLI's
+// TOON, help[] included, and a failure carries the TOON error document after
+// the exit status. A server that starts rewriting the output, or a CLI whose
+// default drifts, changes these strings.
+func TestRunReturnsTheCLIsTOON(t *testing.T) {
+	bin := buildCLI(t)
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+
+	ok := mcpLinksPage(t, http.StatusOK)
+	r := Run(context.Background(), bin, "extract_links", json.RawMessage(`{"url":"`+ok+`"}`))
+	if r.IsError {
+		t.Fatalf("success came back as an error: %s", text(t, r.Content))
+	}
+	wantOK := strings.ReplaceAll(`url: "{{U}}"
+links[2]{href,text,score,section}:
+  "{{U}}/start",Start here,100,Start here
+  "{{U}}/more",More,40,Start here
+total: 2
+help[1]: Read the top link: llm-extract extract-relevant --path '<links[0].href>' --context '<what you need>'
+`, "{{U}}", ok)
+	if got := r.Content[0].(*mcp.TextContent).Text; got != wantOK {
+		t.Errorf("success text:\n got %q\nwant %q", got, wantOK)
+	}
+
+	missing := mcpLinksPage(t, http.StatusNotFound)
+	r = Run(context.Background(), bin, "extract_links", json.RawMessage(`{"url":"`+missing+`"}`))
+	if !r.IsError {
+		t.Fatalf("a 404 came back as success: %s", text(t, r.Content))
+	}
+	wantFail := strings.ReplaceAll(`llm-extract extract-links failed: exit status 1
+url: "{{U}}"
+error: "HTTP error: 404 Not Found"
+help[2]: "Check the URL is reachable, or raise --timeout, then run the command again",Run 'llm-extract extract-links --help' for usage`, "{{U}}", missing)
+	if got := r.Content[0].(*mcp.TextContent).Text; got != wantFail {
+		t.Errorf("failure text:\n got %q\nwant %q", got, wantFail)
 	}
 }
