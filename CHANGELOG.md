@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `help[]` next steps under `--axi` no longer write a link, page URL or path into the suggested command on Linux and macOS. They now name the result field that holds it on every platform (`--path <links[0].href>`, `--path <url>`, `--path <path>`), as Windows already did. In v1.1.0 the value was single-quoted for a POSIX shell, but TOON escaping doubled the backslash of `'\''` on the terminal, so a command copied from the output and pasted into a shell ran what a hostile page put in the link (for example `/safe?q=';id;'` ran `id`).
 - `go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest` binaries now report the installed release with `--version` (for example `1.1.0`) instead of `dev`: when ldflags did not stamp a version, both `llm-extract` and `llm-extract-mcp` read the module version from the build info, skipping `(devel)`. A version stamped at build time still wins.
 
 ### Changed

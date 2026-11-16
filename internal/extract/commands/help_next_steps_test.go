@@ -70,7 +70,7 @@ func TestExtractLinksHelpOnErrorAndList(t *testing.T) {
 	}
 	ok := helpPageServer(t, `<html><body><h1><a href="/top">Top</a></h1></body></html>`)
 	h := helpOf(t, linksOut(t, "--url", ok.URL))
-	if len(h) != 1 || !strings.Contains(h[0].(string), "/top") {
+	if len(h) != 1 || !strings.Contains(h[0].(string), "--path <links[0].href>") {
 		t.Errorf("list should carry one next step naming the top link: %v", h)
 	}
 }
@@ -85,7 +85,7 @@ func TestExtractRelevantHelp(t *testing.T) {
 	}
 	withAXI(t)
 	out, _ := runExtractRelevantCmd(t, "--path", src, "--context", "x")
-	if h := helpOf(t, out); len(h) != 1 || !strings.Contains(h[0].(string), "llm-extract extract-relevant --path '"+src+"'") {
+	if h := helpOf(t, out); len(h) != 1 || !strings.Contains(h[0].(string), "llm-extract extract-relevant --path <path>") {
 		t.Errorf("empty result lacks a concrete next command: %v\n%s", h, out)
 	}
 	// An error after work starts: unreachable model.

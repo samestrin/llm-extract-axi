@@ -10,18 +10,9 @@ import (
 
 // These tests defend the four findings of the second v1.1.0 release gate.
 
-// cmdInjectHref is a link a page controls that is harmless in a POSIX shell
-// once single-quoted, but runs whoami when pasted into cmd.exe, where single
-// quotes do not quote and & separates commands.
+// cmdInjectHref is a link a page controls that runs whoami when pasted into
+// cmd.exe, where single quotes do not quote and & separates commands.
 const cmdInjectHref = "https://example.com/?a=1&whoami&rem"
-
-// helpFor sets the platform the help[] commands are written for, for one test.
-func helpFor(t *testing.T, goos string) {
-	t.Helper()
-	orig := helpGOOS
-	t.Cleanup(func() { helpGOOS = orig })
-	helpGOOS = goos
-}
 
 // allHelpLines returns every help[] line that suggests a command on target,
 // across extract-links (list and empty result) and extract-relevant (path and
@@ -37,47 +28,37 @@ func allHelpLines(target string) map[string]string {
 	}
 }
 
-// Defends shell-quote-windows-injection on POSIX: the link that injects in
-// cmd.exe is read by sh as one argument, so the POSIX quoting holds for it.
-func TestHelpCommandPOSIXQuotesCmdInjectLink(t *testing.T) {
-	helpFor(t, "linux")
-	for line, prefix := range allHelpLines(cmdInjectHref) {
-		got := runHelpCommand(t, strings.TrimSuffix(line, " -o <file>"), prefix)
-		if len(got) != 5 || got[2] != cmdInjectHref {
-			t.Errorf("%q: sh read %q", line, got)
-		}
-	}
-}
-
-// Defends shell-quote-windows-injection on Windows: no quoting is safe in
-// both cmd.exe and PowerShell, so a help line built on Windows must carry no
-// part of the page-controlled value at all -- pasting the whole line must not
-// run whoami -- and must name the result field that holds it instead.
-func TestHelpCommandWindowsLeavesUntrustedValueOut(t *testing.T) {
-	helpFor(t, "windows")
-	for line := range allHelpLines(cmdInjectHref) {
-		for _, bad := range []string{"whoami", "example.com", "&", "%", "|", "^", `"`} {
-			if strings.Contains(line, bad) {
-				t.Errorf("windows help line carries %q: %s", bad, line)
+// Defends shell-quote-windows-injection and help-paste-injection: no quoting
+// is safe in cmd.exe, PowerShell and a POSIX shell pasted through TOON alike,
+// so a help line must carry no part of the page-controlled value at all --
+// pasting the whole line must not run whoami or touch -- and must name the
+// result field that holds it instead.
+func TestHelpCommandLeavesUntrustedValueOut(t *testing.T) {
+	for _, value := range []string{cmdInjectHref, "https://example.com" + pasteHref} {
+		for line := range allHelpLines(value) {
+			for _, bad := range []string{"whoami", "touch", "example.com", "&", "%", "|", "^", `"`, "'\\''"} {
+				if strings.Contains(line, bad) {
+					t.Errorf("help line carries %q: %s", bad, line)
+				}
 			}
-		}
-		if !strings.Contains(line, "--path <") {
-			t.Errorf("windows help line does not name the field to use: %s", line)
+			if !strings.Contains(line, "--path <") {
+				t.Errorf("help line does not name the field to use: %s", line)
+			}
 		}
 	}
 	links := extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: cmdInjectHref}}})[0]
 	if want := "Read the top link: llm-extract extract-relevant --path <links[0].href> --context '<what you need>'"; links != want {
-		t.Errorf("windows top-link line:\n got %s\nwant %s", links, want)
+		t.Errorf("top-link line:\n got %s\nwant %s", links, want)
 	}
 	page := extractLinksHelp(ExtractLinksResult{URL: cmdInjectHref})[0]
 	if !strings.Contains(page, "--path <url>") {
-		t.Errorf("windows empty-page line does not name url: %s", page)
+		t.Errorf("empty-page line does not name url: %s", page)
 	}
 	if p := extractRelevantHelp(ExtractRelevantResult{Path: `C:\docs\a&b.md`})[0]; !strings.Contains(p, "--path <path>") {
-		t.Errorf("windows path line does not name path: %s", p)
+		t.Errorf("path line does not name path: %s", p)
 	}
 	if u := extractRelevantHelp(ExtractRelevantResult{URL: cmdInjectHref})[0]; !strings.Contains(u, "--path <url>") {
-		t.Errorf("windows url line does not name url: %s", u)
+		t.Errorf("url line does not name url: %s", u)
 	}
 }
 
