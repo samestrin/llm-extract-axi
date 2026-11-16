@@ -1,6 +1,7 @@
 package output
 
 import (
+	"errors"
 	"strings"
 
 	goaxi "github.com/samestrin/go-axi"
@@ -52,6 +53,12 @@ var usageMarkers = [][]string{
 func ExitCodeFor(err error) int {
 	if err == nil {
 		return int(goaxi.ExitOK)
+	}
+	// An error from outside cobra says it is a usage error by implementing
+	// UsageError, so no wording of its own has to join usageMarkers.
+	var usage interface{ UsageError() bool }
+	if errors.As(err, &usage) && usage.UsageError() {
+		return int(goaxi.ExitUsage)
 	}
 	msg := err.Error()
 	for _, fragments := range usageMarkers {

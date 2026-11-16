@@ -96,13 +96,16 @@ type reachRow struct {
 // the configuration a run would use. The API key is reported as set or not and
 // never carried, and the base URL has passed through redactURL.
 type homeView struct {
-	Bin           string     `json:"bin"`
-	About         string     `json:"about"`
-	Reach         []reachRow `json:"reach"`
-	APIKeySet     bool       `json:"api_key_set"`
-	Model         string     `json:"model"`
-	BaseURL       string     `json:"base_url"`
-	FetchMaxBytes int        `json:"fetch_max_bytes"`
+	Bin       string     `json:"bin"`
+	About     string     `json:"about"`
+	Reach     []reachRow `json:"reach"`
+	APIKeySet bool       `json:"api_key_set"`
+	// APIConfigError is why a key that is set cannot be used, such as an
+	// Anthropic key with no OPENAI_BASE_URL to send it to.
+	APIConfigError string `json:"api_config_error,omitempty"`
+	Model          string `json:"model"`
+	BaseURL        string `json:"base_url"`
+	FetchMaxBytes  int    `json:"fetch_max_bytes"`
 }
 
 // homeHelp is the help[] block of the home view under --axi.
@@ -128,6 +131,9 @@ func buildHomeView() homeView {
 	}
 	cfg := llmapi.GetAPIConfig()
 	view.APIKeySet = cfg.APIKey != ""
+	if err := cfg.Validate(); err != nil && view.APIKeySet {
+		view.APIConfigError = err.Error()
+	}
 	view.Model = cfg.Model
 	view.BaseURL = redactURL(cfg.BaseURL)
 	view.FetchMaxBytes = fetch.LoadConfig().MaxBodyBytes
@@ -154,6 +160,9 @@ func printHome(w io.Writer) error {
 	keyState := "not set (extract-relevant and extract-links --context need one)"
 	if view.APIKeySet {
 		keyState = "set"
+	}
+	if view.APIConfigError != "" {
+		keyState = "set, but unusable: " + view.APIConfigError
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(tw, "llm-extract\t%s\n", view.Bin)

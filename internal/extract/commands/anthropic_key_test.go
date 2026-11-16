@@ -10,6 +10,7 @@ import (
 	goaxi "github.com/samestrin/go-axi"
 
 	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
 
 // standInForDefaultURL sends every model call bound for llmapi.DefaultBaseURL
@@ -38,7 +39,10 @@ func standInForDefaultURL(t *testing.T) (last *atomic.Value, calls func() int32)
 func TestAnthropicKeyWithoutBaseURLIsRefused(t *testing.T) {
 	for _, axi := range []bool{false, true} {
 		t.Run(map[bool]string{false: "text", true: "axi"}[axi], func(t *testing.T) {
-			t.Cleanup(func() { GlobalAXIOutput = false })
+			t.Cleanup(func() {
+				GlobalAXIOutput = false
+				output.SetDefaultAXI(false)
+			})
 			t.Setenv("OPENAI_API_KEY", "")
 			t.Setenv("ANTHROPIC_API_KEY", "sk-ant-must-not-leave")
 			t.Setenv("OPENAI_BASE_URL", "")

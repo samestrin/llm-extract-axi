@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
@@ -774,10 +775,15 @@ func init() {
 	RootCmd.AddCommand(newExtractRelevantCmd())
 }
 
-// cutAtRuneBoundary is a red-step stub.
+// cutAtRuneBoundary returns at most limit bytes of s, cut on the last
+// character boundary at or below limit, so a cut never sends the model half
+// of a multi-byte character.
 func cutAtRuneBoundary(s string, limit int) string {
 	if len(s) <= limit {
 		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
 	}
 	return s[:limit]
 }
