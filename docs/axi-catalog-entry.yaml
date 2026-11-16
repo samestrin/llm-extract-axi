@@ -22,7 +22,8 @@
 #
 # `reviewed_revision` is the commit docs/axi-audit.md was made against
 # (4ef2b67, the commit the v1.1.0 tag carries; the release gate ran on
-# a886d18 and the tag landed one commit later). If a later release moves the
+# a886d18 and the tag landed two commits later: the release-gate warning
+# fixes, #51, then the changelog fold, #52). If a later release moves the
 # pin, re-check docs/axi-audit.md there and replace both; TestAXIAuditPointersLandOnTheirSymbols and
 # TestAXICatalogEntryReviewsTheAuditedRevision fail when they drift apart.
 #
