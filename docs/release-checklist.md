@@ -1,11 +1,13 @@
 # Release checklist
 
-Steps for cutting a release of `llm-extract`. Run them from the repository root
-on the commit that will be tagged.
+Steps for cutting a release of `llm-extract`. Run steps 1 to 4 from the
+repository root on the commit that will be tagged; steps 5 and 6 follow the
+published release.
 
 Two of them keep the two recorded numbers honest: the demo GIF and the
-performance table. Both show what the release binary does, so both are re-run
-when the release changes something they show.
+performance table. Both show what the release binary does. The GIF is
+re-rendered when the release changes something it shows; the table is re-timed
+on every release, so its version line always names one.
 
 ## 1. Green before a tag
 
@@ -41,31 +43,14 @@ vhs docs/demo/llm-extract.tape
 The tape's commands are replayed without `vhs` by `go test ./tests/e2e`, so a
 command that stopped working fails CI before the render is needed.
 
-## 3. Re-run the performance script
-
-The `## Performance` table in the README is generated, never typed. Re-run the
-script on the machine that will be named in the table:
-
-```bash
-make build
-./benchmarks/perf.sh
-```
-
-- [ ] `benchmarks/results-performance.json` and
-      `benchmarks/results-performance.md` are rewritten, not hand-edited.
-- [ ] The table names the version, the date, the machine and the method.
-- [ ] Every figure in the README's `## Performance` table matches the generated
-      table.
-- [ ] Both files are committed.
-
-## 4. CHANGELOG
+## 3. CHANGELOG
 
 - [ ] `CHANGELOG.md` has a `[Unreleased]` section that lists every user-visible
       change since the last tag, in plain words, without ticket IDs.
 - [ ] That section is renamed to the version and today's date when the tag is
       pushed.
 
-## 5. Tag and publish
+## 4. Tag and publish
 
 ```bash
 git tag v<version>
@@ -80,7 +65,7 @@ them as the release. Check the run is green before announcing anything.
 - [ ] The release page lists both binaries per platform plus `SHA256SUMS.txt`.
 - [ ] The binaries report the tagged version (`llm-extract --version`).
 
-## 6. Check the install path
+## 5. Check the install path
 
 - [ ] On a machine without a checkout, the install one-liner installs the new
       version from the new release:
@@ -93,3 +78,26 @@ them as the release. Check the run is green before announcing anything.
 - [ ] A checksum mismatch or a failed download still installs nothing (the
       installer's own tests cover this, but the published assets are what it
       reads).
+
+## 6. Re-time the released binary
+
+The `## Performance` table in the README is generated, never typed. It is
+re-run after the tag, against the binary the release published, so its
+Version line names the release. Run before the tag, `perf.sh` stamps a
+`git describe` version such as `1.0.1-23-g8f6fbb7`, which names no release.
+
+Download the release binary for the machine that will be named in the table,
+then:
+
+```bash
+./benchmarks/perf.sh -bin path/to/llm-extract-<os>-<arch>
+```
+
+- [ ] The table's **Version** line reads `llm-extract <version>`, the tag just
+      pushed, with no `-N-g<hash>` or `-dirty` suffix.
+- [ ] `benchmarks/results-performance.json` and
+      `benchmarks/results-performance.md` are rewritten, not hand-edited.
+- [ ] The table names the version, the date, the machine and the method.
+- [ ] Every figure in the README's `## Performance` table matches the generated
+      table.
+- [ ] Both files and the README are committed in a pull request after the tag.
