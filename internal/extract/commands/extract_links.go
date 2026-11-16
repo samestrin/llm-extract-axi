@@ -637,7 +637,7 @@ Do not include any explanation or text outside the JSON.`
 	// Truncate if too long
 	llmPrompts.Add(1)
 	if len(userPrompt) > maxLinksPromptBytes {
-		userPrompt = userPrompt[:maxLinksPromptBytes] + "\n...(truncated)"
+		userPrompt = cutAtRuneBoundary(userPrompt, maxLinksPromptBytes) + "\n...(truncated)"
 		llmPromptsCut.Add(1)
 	}
 

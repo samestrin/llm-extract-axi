@@ -593,7 +593,7 @@ Rules:
 	// reports the cut in its result's truncated field.
 	llmPrompts.Add(1)
 	if len(userPrompt) > maxRelevantPromptBytes {
-		userPrompt = userPrompt[:maxRelevantPromptBytes] + "\n\n[Content truncated due to length]"
+		userPrompt = cutAtRuneBoundary(userPrompt, maxRelevantPromptBytes) + "\n\n[Content truncated due to length]"
 		llmPromptsCut.Add(1)
 	}
 
@@ -772,4 +772,12 @@ func plainExtractResult(result ExtractRelevantResult) string {
 
 func init() {
 	RootCmd.AddCommand(newExtractRelevantCmd())
+}
+
+// cutAtRuneBoundary is a red-step stub.
+func cutAtRuneBoundary(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	return s[:limit]
 }
