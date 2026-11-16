@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The README H1 now names the repository, `llm-extract-axi`; command examples and the product name remain `llm-extract`.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `4ef2b67`, the commit the `v1.1.0` tag carries; every `file:line` pointer and probe was re-checked there, and the `extract-links --axi` probe quote now names all four default fields.
 - The README's pin-a-version install example now uses `v1.1.0` instead of the stale `v1.0.1`.
 

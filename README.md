@@ -1,4 +1,4 @@
-# llm-extract
+# llm-extract-axi
 
 A CLI for agents that pulls only what is needed from a large file or a web page, without filling the agent's context.
 
