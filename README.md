@@ -34,7 +34,7 @@ This installs `llm-extract` and `llm-extract-mcp` into `$HOME/.local/bin` (set `
 Pin a version instead of installing the latest release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | LLM_EXTRACT_VERSION=v1.0.1 bash
+curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | LLM_EXTRACT_VERSION=v1.1.0 bash
 ```
 
 If `~/.local/bin` is not on `PATH`, the installer says so and prints the `export` line to add.
@@ -49,7 +49,7 @@ Requires Go 1.24 or later:
 go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest
 ```
 
-This installs only the CLI; the release binary is the way to get `llm-extract-mcp`.
+This installs only the CLI; the release binary is the way to get `llm-extract-mcp`. The installed binary reports the installed release with `llm-extract --version` (for example `1.1.0`), read from the module version `go install` recorded.
 
 ### From source
 
