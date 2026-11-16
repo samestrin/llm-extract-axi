@@ -43,6 +43,19 @@ var usageMarkers = [][]string{
 	{`required flag(s) "`, " not set"},
 }
 
+// usageError marks a malformed invocation that cobra did not detect itself,
+// such as two flags that cannot be used together.
+type usageError struct{ error }
+
+func (e usageError) Unwrap() error { return e.error }
+
+// UsageError marks e for ExitCodeFor's usage-error check.
+func (usageError) UsageError() bool { return true }
+
+// UsageError marks err as a malformed invocation, so ExitCodeFor returns 2
+// for it without relying on its wording.
+func UsageError(err error) error { return usageError{err} }
+
 // ExitCodeFor classifies err into the process status the AXI contract expects.
 //
 // The split matters to a caller that cannot see the message. Exit 1 says the

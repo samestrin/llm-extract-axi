@@ -242,12 +242,12 @@ func TestRunReturnsTheCLIsTOON(t *testing.T) {
 	if r.IsError {
 		t.Fatalf("success came back as an error: %s", text(t, r.Content))
 	}
-	wantOK := strings.ReplaceAll(`url: "{{U}}"
-links[2]{href,text,score,section}:
-  "{{U}}/start",Start here,100,Start here
-  "{{U}}/more",More,40,Start here
+	wantOK := strings.ReplaceAll(`help[1]: "Read the top link: llm-extract extract-relevant --path <links[0].href> --context '<what you need>'"
+links[2]{href,score,section,text}:
+  "{{U}}/start",100,Start here,Start here
+  "{{U}}/more",40,Start here,More
 total: 2
-help[1]: Read the top link: llm-extract extract-relevant --path '<links[0].href>' --context '<what you need>'
+url: "{{U}}"
 `, "{{U}}", ok)
 	if got := r.Content[0].(*mcp.TextContent).Text; got != wantOK {
 		t.Errorf("success text:\n got %q\nwant %q", got, wantOK)
@@ -259,9 +259,9 @@ help[1]: Read the top link: llm-extract extract-relevant --path '<links[0].href>
 		t.Fatalf("a 404 came back as success: %s", text(t, r.Content))
 	}
 	wantFail := strings.ReplaceAll(`llm-extract extract-links failed: exit status 1
-url: "{{U}}"
 error: "HTTP error: 404 Not Found"
-help[2]: "Check the URL is reachable, or raise --timeout, then run the command again",Run 'llm-extract extract-links --help' for usage`, "{{U}}", missing)
+help[2]: "Check the URL is reachable, or raise --timeout, then run the command again",Run 'llm-extract extract-links --help' for usage
+url: "{{U}}"`, "{{U}}", missing)
 	if got := r.Content[0].(*mcp.TextContent).Text; got != wantFail {
 		t.Errorf("failure text:\n got %q\nwant %q", got, wantFail)
 	}

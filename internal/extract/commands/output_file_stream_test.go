@@ -180,7 +180,7 @@ func TestJSONExtractRelevantOutputFileStdoutIsOneJSONDocument(t *testing.T) {
 // Suppressing it everywhere would take away the only report a plain run gives.
 func TestPlainExtractRelevantOutputFileStillPrintsSummary(t *testing.T) {
 	src, dst := extractingFile(t, "the extracted passage")
-	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "-o", dst)
+	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "-o", dst, "--plain")
 	if code != 0 {
 		t.Fatalf("exit %d, want 0:\n%s", code, stdout)
 	}

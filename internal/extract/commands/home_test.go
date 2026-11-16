@@ -196,15 +196,15 @@ func TestRedactURL(t *testing.T) {
 	}
 }
 
-// Defends the plain home view keeping its table: --axi adds TOON, it does not
-// change what a person sees. The live state appears there too, so the two
-// modes do not disagree about the configuration.
+// Defends the --plain home view keeping its table: TOON is the default, and
+// --plain still shows a person what it always did. The live state appears
+// there too, so the two modes do not disagree about the configuration.
 func TestRunPlainHomeViewKeepsTableAndShowsState(t *testing.T) {
 	homeEnv(t)
 	t.Setenv("OPENAI_API_KEY", "sk-secret-openai")
 
 	var stdout, stderr bytes.Buffer
-	if code := run(nil, &stdout, &stderr); code != 0 {
+	if code := run([]string{"--plain"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exited %d; stderr=%q", code, stderr.String())
 	}
 	out := stdout.String()

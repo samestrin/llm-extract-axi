@@ -230,7 +230,7 @@ func probeFetchMaxBytes(t *testing.T) {
 	srv := pageServer(t, http.StatusOK, body)
 
 	t.Setenv("FETCH_MAX_BYTES", "16")
-	code, out, stderr := runCLI(t, "fetch", srv.URL)
+	code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain")
 	if code == 0 || !strings.Contains(stderr, "size cap") {
 		t.Errorf("a body over FETCH_MAX_BYTES=16 exited %d, want a size-cap error: %s %s", code, out, stderr)
 	}
@@ -254,7 +254,7 @@ func probeFetchTimeout(t *testing.T) {
 	t.Setenv("FETCH_MAX_RETRIES", "0")
 
 	t.Setenv("FETCH_TIMEOUT", "1")
-	code, out, stderr := runCLI(t, "fetch", srv.URL)
+	code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain")
 	if code == 0 || stderr == "" {
 		t.Errorf("a page slower than FETCH_TIMEOUT=1 exited %d, want a timeout error: %s %s", code, out, stderr)
 	}

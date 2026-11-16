@@ -110,9 +110,11 @@ func isConflict(t *testing.T, code int, stdout, stderr string) {
 
 // Defends the epic 09 default: TOON with help[] when no flag is given, today's
 // text behind --plain (and --axi=false), --json and --min as before, --axi an
-// accepted no-op, and --plain with --json refused. fetch, setup and
-// completion print the same bytes in every mode that parses. Flipping the
-// default back, or letting --json lose to it, turns a row of this red.
+// accepted no-op, and --plain with --json refused. fetch and setup print the
+// same bytes in every mode that parses. Flipping the default back, or letting
+// --json lose to it, turns a row of this red. completion's row is
+// TestCLICompletionIgnoresTheOutputMode in tests/e2e: cobra binds that
+// command to the first run's stdout, so only one in-process run sees it.
 func TestOutputModeMatrix(t *testing.T) {
 	t.Setenv("FETCH_MAX_RETRIES", "0")
 	homeEnv(t)
@@ -130,19 +132,9 @@ func TestOutputModeMatrix(t *testing.T) {
 	setupDir := t.TempDir()
 
 	pageBody := page
-	var setupRef, completionRef string
-	for _, ref := range []struct {
-		out  *string
-		args []string
-	}{
-		{&setupRef, []string{"setup", "--dry-run", "--dir", setupDir, "--plain"}},
-		{&completionRef, []string{"completion", "bash", "--plain"}},
-	} {
-		code, out, stderr := runCLI(t, ref.args...)
-		if code != 0 || out == "" {
-			t.Fatalf("%v: exit %d, stdout %q, stderr %q", ref.args, code, out, stderr)
-		}
-		*ref.out = out
+	code, setupRef, stderr := runCLI(t, "setup", "--dry-run", "--dir", setupDir, "--plain")
+	if code != 0 || setupRef == "" {
+		t.Fatalf("setup --plain: exit %d, stdout %q, stderr %q", code, setupRef, stderr)
 	}
 
 	type row struct {
@@ -153,8 +145,8 @@ func TestOutputModeMatrix(t *testing.T) {
 	}
 	rows := []row{
 		{"home", nil, [7]modeCheck{
-			isTOONWithHelp, isText("command  network  model"), isUsage, isTOONWithHelp,
-			isText("command  network  model"), isUsage, isUsage,
+			isTOONWithHelp, isText("Run 'llm-extract --help' for flags"), isUsage, isTOONWithHelp,
+			isText("Run 'llm-extract --help' for flags"), isUsage, isUsage,
 		}},
 		{"fetch", []string{"fetch", fetchURL}, [7]modeCheck{
 			isExactly(&pageBody), isExactly(&pageBody), isFetchJSON(page), isExactly(&pageBody),
@@ -171,10 +163,6 @@ func TestOutputModeMatrix(t *testing.T) {
 		{"setup", []string{"setup", "--dry-run", "--dir", setupDir}, [7]modeCheck{
 			isExactly(&setupRef), isExactly(&setupRef), isUsage, isExactly(&setupRef),
 			isExactly(&setupRef), isUsage, isUsage,
-		}},
-		{"completion", []string{"completion", "bash"}, [7]modeCheck{
-			isExactly(&completionRef), isExactly(&completionRef), isUsage, isExactly(&completionRef),
-			isExactly(&completionRef), isUsage, isUsage,
 		}},
 	}
 	for _, r := range rows {

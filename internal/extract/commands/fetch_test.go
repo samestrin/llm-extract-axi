@@ -7,13 +7,21 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
+// runFetchCmd runs fetch under --plain, where an error is text on stderr,
+// unless the test asks for --json, which --plain refuses. A successful fetch
+// prints the same bytes in every mode (TestOutputModeMatrix); the default's
+// TOON error is pinned in axi_errors_test.go.
 func runFetchCmd(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
 	t.Setenv("FETCH_MAX_RETRIES", "0")
+	if !slices.Contains(args, "--json") {
+		args = append([]string{"--plain"}, args...)
+	}
 	var stdout, stderr bytes.Buffer
 	code := run(append([]string{"fetch"}, args...), &stdout, &stderr)
 	return code, stdout.String(), stderr.String()

@@ -16,10 +16,10 @@ import (
 )
 
 // Defends the exit-code contract: an unknown command must exit non-zero and
-// say why on stderr, never exit 0 with nothing printed.
+// say why (on stderr under --plain), never exit 0 with nothing printed.
 func TestRunUnknownCommandFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"no-such-command"}, &stdout, &stderr)
+	code := run([]string{"no-such-command", "--plain"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("unknown command exited 0; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
@@ -45,10 +45,11 @@ func TestRunExitCodeSeparatesUsageFromFailure(t *testing.T) {
 		args []string
 		want int
 	}{
-		{"unknown root flag", []string{"--bogus"}, 2},
-		{"unknown command", []string{"no-such-command"}, 2},
-		{"unknown subcommand flag", []string{"fetch", "--bogus", down.URL}, 2},
-		{"failed fetch", []string{"fetch", down.URL}, 1},
+		{"unknown root flag", []string{"--plain", "--bogus"}, 2},
+		{"unknown command", []string{"--plain", "no-such-command"}, 2},
+		{"unknown subcommand flag", []string{"fetch", "--plain", "--bogus", down.URL}, 2},
+		{"failed fetch", []string{"fetch", "--plain", down.URL}, 1},
+		{"--plain with --json", []string{"fetch", "--plain", "--json", down.URL}, 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -236,9 +237,10 @@ func TestResetFlagsRestoresDefaults(t *testing.T) {
 	}
 }
 
-// Defends --axi on the root reaching the lifted commands, and not leaking into
-// the next in-process run. In llm-data the flag was published only when true,
-// so a run with --axi followed by one with --json emitted TOON for both.
+// Defends the TOON default (and --axi, which names it) reaching the lifted
+// commands, and not leaking into the next in-process run. In llm-data the flag
+// was published only when true, so a run with --axi followed by one with
+// --json emitted TOON for both.
 func TestRunAXIFlagReachesCommandsAndResets(t *testing.T) {
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -248,7 +250,7 @@ func TestRunAXIFlagReachesCommandsAndResets(t *testing.T) {
 	t.Cleanup(func() { output.SetDefaultAXI(false) })
 
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"extract-links", "--url", page.URL, "--json", "--axi"}, &stdout, &stderr); code != 0 {
+	if code := run([]string{"extract-links", "--url", page.URL, "--axi"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("--axi run exited %d; stderr=%q", code, stderr.String())
 	}
 	axi := strings.TrimSpace(stdout.String())

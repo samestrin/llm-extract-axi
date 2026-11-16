@@ -50,7 +50,7 @@ Sleep 2s
 Type "llm-extract extract-links --axi --url http://127.0.0.1:8765/docs-page.html | head -9" Enter
 Sleep 4s
 
-Type "llm-extract extract-links --fields href,score --url http://127.0.0.1:8765/docs-page.html | head -12" Enter
+Type "llm-extract extract-links --fields href,score --plain --url http://127.0.0.1:8765/docs-page.html | head -12" Enter
 Sleep 4s
 
 Hide

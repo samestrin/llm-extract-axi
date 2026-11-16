@@ -10,7 +10,7 @@ The session shows three commands against the release binary:
 | --- | --- |
 | `llm-extract --version` | the version the binary reports |
 | `llm-extract extract-links --axi --url ...` | one page's links as a single TOON document |
-| `llm-extract extract-links --fields href,score --url ...` | the same page cut down to two fields per link |
+| `llm-extract extract-links --fields href,score --plain --url ...` | the same page cut down to two fields per link, as text |
 
 ## What the session talks to
 
