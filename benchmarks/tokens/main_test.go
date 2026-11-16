@@ -124,23 +124,41 @@ func TestRunIsReproducible(t *testing.T) {
 }
 
 // Defends "no network": the child gets no model credentials, and any proxied
-// (that is, non-loopback) request is pointed at a closed port.
+// (that is, non-loopback) request is pointed at a closed port. A prefixed
+// credential such as LLM_OPENAI_API_KEY used to reach the child, and the
+// check matched substrings, so such a machine failed it; names are compared
+// whole now.
 func TestChildEnvCannotReachOut(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant")
 	t.Setenv("OPENAI_BASE_URL", "https://api.example.com")
+	t.Setenv("LLM_OPENAI_API_KEY", "sk-prefixed")
+	t.Setenv("MY_ANTHROPIC_API_KEY", "sk-ant-prefixed")
+	t.Setenv("CORP_OPENAI_BASE_URL", "https://corp.example.com")
 	t.Setenv("NO_PROXY", "*")
-	env := strings.Join(childEnv(), "\n")
-	for _, banned := range []string{"OPENAI_API_KEY=", "ANTHROPIC_API_KEY=", "OPENAI_BASE_URL=", "NO_PROXY=*"} {
-		if strings.Contains(env, banned) {
-			t.Errorf("child env carries %s", banned)
+	t.Setenv("BENCH_KEEP_ME", "1")
+	env := envByName(childEnv())
+	for _, banned := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_BASE_URL",
+		"LLM_OPENAI_API_KEY", "MY_ANTHROPIC_API_KEY", "CORP_OPENAI_BASE_URL", "NO_PROXY"} {
+		if v, ok := env[banned]; ok {
+			t.Errorf("child env carries %s=%s", banned, v)
 		}
 	}
-	for _, want := range []string{"HTTP_PROXY=" + deadProxy, "HTTPS_PROXY=" + deadProxy} {
-		if !strings.Contains(env, want) {
-			t.Errorf("child env lacks %s", want)
+	for name, want := range map[string]string{"HTTP_PROXY": deadProxy, "HTTPS_PROXY": deadProxy, "BENCH_KEEP_ME": "1"} {
+		if env[name] != want {
+			t.Errorf("child env has %s=%q, want %q", name, env[name], want)
 		}
 	}
+}
+
+// envByName splits NAME=value entries into a map keyed by the whole name.
+func envByName(entries []string) map[string]string {
+	m := map[string]string{}
+	for _, kv := range entries {
+		name, value, _ := strings.Cut(kv, "=")
+		m[name] = value
+	}
+	return m
 }
 
 // Defends "nothing reports success when it did not succeed": a failed

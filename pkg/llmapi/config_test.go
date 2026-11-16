@@ -1,7 +1,9 @@
 package llmapi
 
 import (
+	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -104,5 +106,48 @@ func TestGetAPIConfig_AnthropicEnvVars(t *testing.T) {
 	// Should fallback to Anthropic key
 	if config.APIKey != "anthropic-test-key" {
 		t.Errorf("expected APIKey to fallback to ANTHROPIC_API_KEY, got %s", config.APIKey)
+	}
+}
+
+// Defends against sending an Anthropic key to OpenAI: ANTHROPIC_API_KEY used
+// to be accepted with the base URL left at api.openai.com, so the key went to
+// the wrong vendor. Validate must refuse that pairing, naming OPENAI_BASE_URL,
+// and must still accept the two pairings that say where the key belongs.
+func TestValidateAnthropicKeyNeedsBaseURL(t *testing.T) {
+	cases := []struct {
+		name, openai, anthropic, baseURL string
+		wantBaseURLErr                   bool
+	}{
+		{"anthropic key alone", "", "sk-ant", "", true},
+		{"anthropic key with base URL", "", "sk-ant", "https://proxy.example/v1", false},
+		{"openai key alone", "sk-openai", "", "", false},
+		{"both keys, no base URL: the openai key is the one used", "sk-openai", "sk-ant", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", tc.openai)
+			t.Setenv("ANTHROPIC_API_KEY", tc.anthropic)
+			t.Setenv("OPENAI_BASE_URL", tc.baseURL)
+
+			err := GetAPIConfig().Validate()
+			if !tc.wantBaseURLErr {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, ErrBaseURLRequired) {
+				t.Fatalf("Validate() = %v, want ErrBaseURLRequired", err)
+			}
+			for _, want := range []string{"OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "OpenAI-compatible"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the error does not name %q: %v", want, err)
+				}
+			}
+			var usage interface{ UsageError() bool }
+			if !errors.As(err, &usage) || !usage.UsageError() {
+				t.Errorf("the error is not marked as a usage error, so it would exit 1: %v", err)
+			}
+		})
 	}
 }

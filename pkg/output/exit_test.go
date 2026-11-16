@@ -85,3 +85,26 @@ func TestPrintErrorReturnsTheClassifiedCode(t *testing.T) {
 type discard struct{}
 
 func (discard) Write(p []byte) (int, error) { return len(p), nil }
+
+// markedUsage is an error that says it is a usage error, the way a package
+// with no cobra wording reports a malformed invocation.
+type markedUsage struct{}
+
+func (markedUsage) Error() string    { return "set OPENAI_BASE_URL" }
+func (markedUsage) UsageError() bool { return true }
+
+// Defends the exit code of a usage error that cobra did not write: a missing
+// setting the caller must supply is a malformed invocation, and a retry
+// without changing it never succeeds, so it must exit 2 even when wrapped.
+func TestExitCodeForMarkedUsageError(t *testing.T) {
+	for name, err := range map[string]error{
+		"bare":    markedUsage{},
+		"wrapped": fmt.Errorf("API configuration error: %w", markedUsage{}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := ExitCodeFor(err); got != int(goaxi.ExitUsage) {
+				t.Errorf("ExitCodeFor(%v) = %d, want %d (ExitUsage)", err, got, goaxi.ExitUsage)
+			}
+		})
+	}
+}

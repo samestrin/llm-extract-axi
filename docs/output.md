@@ -13,7 +13,7 @@ When a model ran, the `--json`, `--min` and `--axi` output reports `model` and `
 
 ## The home view
 
-Running `llm-extract` with no arguments prints the path of the binary (home shown as `~`), a one-line description, the network/model reach table and the configuration a run would use: whether an API key is set (the key itself is never shown), the model, the base URL (with any user, password or query string removed) and the fetch size cap. It makes no network or model call. `llm-extract --axi` prints the same view as TOON, with a `help[]` list of next steps.
+Running `llm-extract` with no arguments prints the path of the binary (home shown as `~`), a one-line description, the network/model reach table and the configuration a run would use: whether an API key is set (the key itself is never shown), why a key that is set cannot be used (`api_config_error`, for example an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`), the model, the base URL (with any user, password or query string removed) and the fetch size cap. It makes no network or model call. `llm-extract --axi` prints the same view as TOON, with a `help[]` list of next steps.
 
 ## Saving to a file (`-o`)
 
@@ -31,7 +31,7 @@ A successful run that finds nothing exits 0 and carries `total: 0` and a `messag
 
 ## Failures
 
-A failed fetch or a failed model call exits non-zero from both `extract-links` and `extract-relevant`, with the reason on stderr (on stdout under `--axi`, see below). The output is still printed and carries the error: an `ERROR: <reason>` line in text mode, the `error` field in `--json`. `extract-relevant` with no API key set fails before doing any work.
+A failed fetch or a failed model call exits non-zero from both `extract-links` and `extract-relevant`, with the reason on stderr (on stdout under `--axi`, see below). The output is still printed and carries the error: an `ERROR: <reason>` line in text mode, the `error` field in `--json`. `extract-relevant` with no API key set fails before doing any work, and so does `extract-relevant` with only `ANTHROPIC_API_KEY` set and no `OPENAI_BASE_URL` (exit 2): the client speaks the OpenAI-compatible API and never sends that key to the OpenAI default.
 
 A partial result is kept and says it is partial, but the exit is still non-zero:
 
@@ -63,7 +63,7 @@ A `help[]` step that suggests running `extract-relevant` on a link, page URL or 
 | --- | --- |
 | 0 | Success, including a successful run that found nothing |
 | 1 | The command ran and failed: a failed fetch or model call, or a partial result |
-| 2 | The invocation itself is malformed: an unknown command or flag, or a flag missing its argument |
+| 2 | The invocation itself is malformed: an unknown command or flag, a flag missing its argument, or `extract-relevant` with an `ANTHROPIC_API_KEY` and no `OPENAI_BASE_URL` to send it to |
 
 Retrying an exit 2 unchanged never helps.
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
@@ -139,7 +140,9 @@ Examples:
 
 API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
-  Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
+  Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.
+  ANTHROPIC_API_KEY needs OPENAI_BASE_URL: the client speaks the
+  OpenAI-compatible API and never sends that key to the OpenAI default.`,
 		Args: cobra.NoArgs,
 		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
 		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
@@ -593,7 +596,7 @@ Rules:
 	// reports the cut in its result's truncated field.
 	llmPrompts.Add(1)
 	if len(userPrompt) > maxRelevantPromptBytes {
-		userPrompt = userPrompt[:maxRelevantPromptBytes] + "\n\n[Content truncated due to length]"
+		userPrompt = cutAtRuneBoundary(userPrompt, maxRelevantPromptBytes) + "\n\n[Content truncated due to length]"
 		llmPromptsCut.Add(1)
 	}
 
@@ -772,4 +775,17 @@ func plainExtractResult(result ExtractRelevantResult) string {
 
 func init() {
 	RootCmd.AddCommand(newExtractRelevantCmd())
+}
+
+// cutAtRuneBoundary returns at most limit bytes of s, cut on the last
+// character boundary at or below limit, so a cut never sends the model half
+// of a multi-byte character.
+func cutAtRuneBoundary(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+	for limit > 0 && !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
 }

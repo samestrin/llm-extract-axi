@@ -297,6 +297,7 @@ func TestEnlargeRepeatsTheBody(t *testing.T) {
 // no '>' was repeated into the large page as raw tag text.
 func TestEnlargeRejectsAMalformedBody(t *testing.T) {
 	cases := []struct{ page, want string }{
+		{"</body><body", "comes before"},
 		{"</body><body>", "comes before"},
 		{"<html></body><body class=x></html>", "comes before"},
 		{"<html><body class=x </body></html>", "not closed"},
@@ -341,5 +342,34 @@ func TestMachineReaders(t *testing.T) {
 	m := machine()
 	if m.Threads < 1 || m.Arch != runtime.GOARCH || m.OS == "" {
 		t.Errorf("machine() = %+v", m)
+	}
+}
+
+// Defends the timed child against model credentials and the fetch tuning a
+// caller exported: a prefixed credential such as LLM_OPENAI_API_KEY used to
+// pass the prefix-only filter and reach the child. Names are compared whole.
+func TestChildEnvDropsCredentialsAndTuning(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+	t.Setenv("LLM_OPENAI_API_KEY", "sk-prefixed")
+	t.Setenv("MY_ANTHROPIC_API_KEY", "sk-ant-prefixed")
+	t.Setenv("CORP_OPENAI_BASE_URL", "https://corp.example.com")
+	t.Setenv("FETCH_TIMEOUT", "1")
+	t.Setenv("NO_PROXY", "*")
+	t.Setenv("BENCH_KEEP_ME", "1")
+	env := map[string]string{}
+	for _, kv := range childEnv() {
+		name, value, _ := strings.Cut(kv, "=")
+		env[name] = value
+	}
+	for _, banned := range []string{"OPENAI_API_KEY", "LLM_OPENAI_API_KEY", "MY_ANTHROPIC_API_KEY",
+		"CORP_OPENAI_BASE_URL", "FETCH_TIMEOUT", "NO_PROXY"} {
+		if v, ok := env[banned]; ok {
+			t.Errorf("child env carries %s=%s", banned, v)
+		}
+	}
+	for name, want := range map[string]string{"HTTP_PROXY": deadProxy, "HTTPS_PROXY": deadProxy, "BENCH_KEEP_ME": "1"} {
+		if env[name] != want {
+			t.Errorf("child env has %s=%q, want %q", name, env[name], want)
+		}
 	}
 }

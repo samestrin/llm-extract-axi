@@ -1,9 +1,11 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -151,6 +153,14 @@ func TestDemoTapeRecordsTheCommittedGIF(t *testing.T) {
 	s := parseDemoTape(t)
 	if s.output != demoGIF {
 		t.Errorf("the tape writes %q, want %q: the GIF is a file in the repository", s.output, demoGIF)
+	}
+	// The Output line alone passed with the GIF missing, and the README image
+	// then broke. The file it names must be committed and be a GIF.
+	gif, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(s.output)))
+	if err != nil {
+		t.Errorf("the GIF the tape writes is not in the repository: %v", err)
+	} else if !bytes.HasPrefix(gif, []byte("GIF8")) {
+		t.Errorf("%s is %d bytes and not a GIF", s.output, len(gif))
 	}
 
 	visible := s.visible()

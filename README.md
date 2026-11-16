@@ -126,13 +126,15 @@ The model client is configured entirely through environment variables:
 
 | Name | Default | Meaning |
 | --- | --- | --- |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | unset | API key, required for `extract-relevant` and `extract-links --context` |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Custom model endpoint |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | unset | API key, required for `extract-relevant` and `extract-links --context`; `OPENAI_API_KEY` wins when both are set |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible model endpoint; required when the key is `ANTHROPIC_API_KEY` |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Model selection |
 | `FETCH_MAX_BYTES` | `16777216` (16 MiB) | Maximum response body size; a larger body is an error |
 | `FETCH_TIMEOUT` | `30` | Per-attempt timeout in seconds for `fetch` |
 | `FETCH_MAX_RETRIES` | `2` | Retries on connection errors and 5xx for `fetch` |
 | `FETCH_USER_AGENT` | unset | Override the request User-Agent for `fetch` |
+
+The client speaks the OpenAI-compatible chat completions API. An `ANTHROPIC_API_KEY` is never sent to the OpenAI default: with that key and no `OPENAI_BASE_URL`, `extract-relevant` stops before any model call with a usage error (exit 2) that names `OPENAI_BASE_URL`, and `extract-links --context` makes no model call and reports the same error beside its unranked links, as it does for a missing key. Set it to the OpenAI-compatible endpoint the key belongs to. The home view reports the same problem as `api_config_error`.
 
 On `fetch`, the flags `--max-bytes`, `--timeout`, `--retries` and `--user-agent` override the matching variable.
 
@@ -144,7 +146,7 @@ Output modes: human-readable text by default, `--json` for structured output, `-
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument) |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, or `extract-relevant` with an `ANTHROPIC_API_KEY` and no `OPENAI_BASE_URL`) |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, where errors are printed under `--axi`, and what `llm-extract-mcp` does with a failed run.
 
