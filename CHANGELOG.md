@@ -14,7 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `extract-relevant` and `extract-links --context` no longer cut the model prompt in the middle of a multi-byte character. The cut at 30,000 bytes (25,000 for link ranking) now falls on the last whole character at or below the cap, so the model never receives a broken character; the cut is still reported in `truncated`.
 - The offline benchmarks (`benchmarks/tokens`, `benchmarks/perf`) now drop prefixed model credentials such as `LLM_OPENAI_API_KEY` from the child's environment, and their test compares variable names whole, so it no longer fails on a machine that exports one.
-
 - `help[]` next steps under `--axi` no longer write a link, page URL or path into the suggested command on Linux and macOS. They now name the result field that holds it on every platform (`--path <links[0].href>`, `--path <url>`, `--path <path>`), as Windows already did. In v1.1.0 the value was single-quoted for a POSIX shell, but TOON escaping doubled the backslash of `'\''` on the terminal, so a command copied from the output and pasted into a shell ran what a hostile page put in the link (for example `/safe?q=';id;'` ran `id`).
 - `go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest` binaries now report the installed release with `--version` (for example `1.1.0`) instead of `dev`: when ldflags did not stamp a version, both `llm-extract` and `llm-extract-mcp` read the module version from the build info, skipping `(devel)`. A version stamped at build time still wins.
 
