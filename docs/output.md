@@ -55,7 +55,7 @@ Under `--axi`, every error is on stdout as a TOON `error`/`message` object with 
 
 ## Suggested commands in help[]
 
-A `help[]` step that suggests running `extract-relevant` on a link, page URL or path is written for the shell of the platform the binary runs on. The page controls a link, so on Linux and macOS the value is single-quoted for a POSIX shell, with each apostrophe written as `'\''`, and the command pastes as one argument. On Windows no quoting is safe in both cmd.exe and PowerShell, so the command carries none of the value: it names the result field that holds it, as in `--path <links[0].href>`, `--path <url>` or `--path <path>`, for the caller to fill in. Placeholders such as `<what you need>` are always for the caller to replace.
+A `help[]` step that suggests running `extract-relevant` on a link, page URL or path never carries the value itself, on any platform. It names the result field that holds it, as in `--path <links[0].href>`, `--path <url>` or `--path <path>`, for the caller to fill in from the same output. The page controls a link, and no quoting is safe on every route to a shell: cmd.exe and PowerShell each break a different quoting, and TOON escaping doubles the backslash of a POSIX `'\''`, so a command copied off the terminal would run what the page put in the link. Placeholders such as `<what you need>` are always for the caller to replace.
 
 ## Exit codes
 

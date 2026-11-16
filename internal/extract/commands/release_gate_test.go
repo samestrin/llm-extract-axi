@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,90 +27,6 @@ func axiOffAfter(t *testing.T) {
 }
 
 // These tests defend the five findings of the v1.1.0 release gate.
-
-// hostileHref is a link a page controls: an apostrophe closes a naively
-// single-quoted argument and the rest runs as shell.
-const hostileHref = "https://example.com/safe?q=';id;'"
-
-// runHelpCommand runs the command a help[] line suggests through sh, with
-// llm-extract replaced by a function that prints each argument on its own
-// line. A properly quoted command yields exactly the intended arguments; an
-// injected one yields extra commands' output or a different split.
-func runHelpCommand(t *testing.T, line, prefix string) []string {
-	t.Helper()
-	cmdline, ok := strings.CutPrefix(line, prefix)
-	if !ok {
-		t.Fatalf("help line %q lacks prefix %q", line, prefix)
-	}
-	cmdline = strings.Replace(cmdline, "llm-extract ", "llm_extract ", 1)
-	script := `llm_extract() { for a in "$@"; do printf '%s\n' "$a"; done; }; ` + cmdline
-	out, err := exec.Command("sh", "-c", script).CombinedOutput()
-	if err != nil {
-		t.Fatalf("sh failed on %q: %v\n%s", cmdline, err, out)
-	}
-	return strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-}
-
-// Defends finding 1: a link whose href carries an apostrophe must not break
-// out of its quoting in the suggested next command, and an ordinary link must
-// print exactly as before.
-func TestExtractLinksHelpQuotesHostileLink(t *testing.T) {
-	for _, href := range []string{hostileHref, "https://example.com/it's", "https://example.com/docs"} {
-		h := extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: href}}})
-		got := runHelpCommand(t, h[0], "Read the top link: ")
-		want := []string{"extract-relevant", "--path", href, "--context", "<what you need>"}
-		if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
-			t.Errorf("href %q: sh read %q, want %q", href, got, want)
-		}
-	}
-	h := extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: "https://example.com/docs"}}})
-	if want := "Read the top link: llm-extract extract-relevant --path 'https://example.com/docs' --context '<what you need>'"; h[0] != want {
-		t.Errorf("ordinary link changed:\n got %s\nwant %s", h[0], want)
-	}
-	// The empty-result line quotes the page URL the same way.
-	h = extractLinksHelp(ExtractLinksResult{URL: hostileHref})
-	got := runHelpCommand(t, h[0], "Read the page text instead: ")
-	if len(got) != 5 || got[2] != hostileHref {
-		t.Errorf("empty-result line not quoted: sh read %q", got)
-	}
-}
-
-// Defends finding 1 end to end: a page serving the hostile link yields a help
-// line that sh reads as the link itself.
-func TestExtractLinksAXIHelpHostileLinkFromPage(t *testing.T) {
-	page := helpPageServer(t, `<html><body><h1><a href="/safe?q=';id;'">x</a></h1></body></html>`)
-	withAXI(t)
-	h := helpOf(t, linksOut(t, "--url", page.URL))
-	if len(h) != 1 {
-		t.Fatalf("help = %v", h)
-	}
-	got := runHelpCommand(t, h[0].(string), "Read the top link: ")
-	if len(got) != 5 || got[2] != page.URL+"/safe?q=';id;'" {
-		t.Errorf("sh read %q", got)
-	}
-}
-
-// Defends finding 1 on extract-relevant, whose help[] quotes the path the same
-// way.
-func TestExtractRelevantHelpQuotesPath(t *testing.T) {
-	for _, r := range []ExtractRelevantResult{
-		{Path: "/tmp/it's here.md"},
-		{Path: "/tmp/a.md", ExtractedParts: []string{"x"}},
-		{URL: hostileHref, ExtractedParts: []string{"x"}},
-	} {
-		h := extractRelevantHelp(r)
-		prefix := "Broaden the context: "
-		if len(r.ExtractedParts) > 0 {
-			prefix = "Narrow and save it: "
-		}
-		// "-o <file>" is a placeholder for the caller to fill, not an argument.
-		got := runHelpCommand(t, strings.TrimSuffix(h[0], " -o <file>"), prefix)
-		target := r.Path + r.URL
-		if len(got) < 3 || got[2] != target {
-			t.Errorf("%q: sh read %q", target, got)
-		}
-	}
-}
 
 // Defends finding 2: pflag reads the argument after a value-taking flag as its
 // value, so `--url --axi` sets url to "--axi" and leaves --axi off. The scan

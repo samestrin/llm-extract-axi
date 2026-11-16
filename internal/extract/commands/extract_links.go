@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"runtime"
 	"strings"
 	"time"
 
@@ -280,9 +279,9 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
-		return []string{"Read the page text instead: llm-extract extract-relevant --path " + pathArg(result.URL, "url") + " --context '<what you need>'"}
+		return []string{"Read the page text instead: llm-extract extract-relevant --path " + pathArg("url") + " --context '<what you need>'"}
 	default:
-		return []string{"Read the top link: llm-extract extract-relevant --path " + pathArg(result.Links[0].Href, "links[0].href") + " --context '<what you need>'"}
+		return []string{"Read the top link: llm-extract extract-relevant --path " + pathArg("links[0].href") + " --context '<what you need>'"}
 	}
 }
 
@@ -299,21 +298,15 @@ func rankingTruncation(found int) string {
 	return strings.Join(notes, "; ")
 }
 
-// helpGOOS is the platform whose shell the help[] commands are written for.
-var helpGOOS = runtime.GOOS
-
-// pathArg is the --path argument of a suggested command: value, which a page
-// or caller controls, quoted for the shell. On a POSIX shell that is
-// shellQuote. On Windows no quoting is safe in both cmd.exe and PowerShell:
-// cmd.exe does not treat single quotes as quotes and expands %VAR% inside
-// double quotes, and PowerShell runs $(...) inside double quotes. So there
-// the command names the result field that holds the value, <field>, and
-// carries none of it.
-func pathArg(value, field string) string {
-	if helpGOOS == "windows" {
-		return "<" + field + ">"
-	}
-	return shellQuote(value)
+// pathArg is the --path argument of a suggested command. The value, a link
+// the page controls or a path the caller gave, is never written into the
+// command: it names the result field that holds it, <field>, for the caller to
+// fill in. No quoting survives every route to a shell: cmd.exe and PowerShell
+// each break a different quoting, and the TOON encoder doubles the backslash
+// in a POSIX '\”, so a command pasted off the terminal ran what the page put
+// in the link.
+func pathArg(field string) string {
+	return "<" + field + ">"
 }
 
 // failedRankingTruncation says how the input of a ranking that failed was cut
@@ -334,13 +327,6 @@ func failedRankingTruncation(found int) string {
 		return ""
 	}
 	return strings.Join(notes, "; ") + "; every link keeps its page-position score"
-}
-
-// shellQuote single-quotes s for a POSIX shell. The page controls a link, so
-// an apostrophe in it is closed, escaped and reopened ('\”) rather than left
-// to end the quoting and run the rest as a command.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // fetchAndExtractLinks fetches a URL and extracts all links with ranking. The
