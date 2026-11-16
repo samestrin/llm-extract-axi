@@ -294,3 +294,21 @@ func TestSetupWritesNothingOutsideDir(t *testing.T) {
 		t.Errorf("home was written: %v", entries)
 	}
 }
+
+// Defends the pflag.SliceValue side of --target, which resetFlags relies
+// on: Append validates like Set, and GetSlice returns a copy.
+func TestTargetListSliceValue(t *testing.T) {
+	l := newTargetList()
+	if err := l.Append("bogus"); err == nil {
+		t.Error("Append accepted an unknown target")
+	}
+	_ = l.Append("codex")
+	got := l.GetSlice()
+	if strings.Join(got, ",") != "codex" {
+		t.Errorf("GetSlice = %q, want [codex]", got)
+	}
+	got[0] = "x"
+	if l.names[0] != "codex" {
+		t.Error("GetSlice exposed the internal slice")
+	}
+}

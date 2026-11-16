@@ -7,19 +7,44 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	setupDir    string
-	setupDryRun bool
+	setupDir     string
+	setupDryRun  bool
+	setupTargets = newTargetList()
 )
 
-// setupHookCommand is what the SessionStart hook runs. A bare run prints the
+// setupBinary is the name the SessionStart hooks run. A bare run prints the
 // content-first home view, which is what an agent should see at session start.
-const setupHookCommand = "llm-extract"
+const setupBinary = "llm-extract"
+
+// setupLookPath and setupExecutable find the binary the hooks run; tests
+// replace them.
+var (
+	setupLookPath   = exec.LookPath
+	setupExecutable = os.Executable
+)
+
+// setupTarget is one agent setup can register with. plan returns the files
+// the target needs, read and merged but not yet written.
+type setupTarget struct {
+	name string
+	plan func(dir, command string) ([]plannedWrite, error)
+}
+
+// setupTargetList is every target, in the order they are written. With no
+// --target flag, setup writes all of them.
+var setupTargetList = []setupTarget{
+	{name: "claude", plan: planClaude},
+	{name: "codex", plan: planCodex},
+}
 
 // setupSkill is the Agent Skill written to .claude/skills/llm-extract/SKILL.md.
 const setupSkill = `---
@@ -41,41 +66,55 @@ A failed fetch or model call exits non-zero with the reason on stderr. Treat tha
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install the Claude Code SessionStart hook and Agent Skill in a project",
-		Long: `Write a SessionStart hook entry into .claude/settings.json and an Agent
-Skill into .claude/skills/llm-extract/SKILL.md, under the project directory.
+		Short: "Install the SessionStart hook for Claude Code and Codex in a project",
+		Long: `Register llm-extract with coding agents in a project, under the project
+directory:
+
+  claude  a SessionStart hook in .claude/settings.json and an Agent Skill in
+          .claude/skills/llm-extract/SKILL.md
+  codex   a SessionStart hook in .codex/hooks.json
+
+--target picks the agents (repeat it or give a comma list); the default is
+all of them. The hook runs llm-extract by name when it is on PATH, and by
+absolute path otherwise; running setup again after the binary moves points
+the hook at the new path.
 
 Existing settings keys and hooks are kept. Running it again changes nothing.
 It never prompts, makes no network or model call, and never writes outside
 the project directory (in particular, not to your home directory).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSetup(cmd.OutOrStdout(), setupDir, setupDryRun)
+			return runSetup(cmd.OutOrStdout(), setupDir, setupTargets.names, setupDryRun)
 		},
 	}
 	cmd.Flags().StringVar(&setupDir, "dir", ".", "Project directory to set up")
 	cmd.Flags().BoolVar(&setupDryRun, "dry-run", false, "Print what would be written without writing")
+	cmd.Flags().Var(setupTargets, "target", "Agent to set up: "+strings.Join(targetNames(), ", ")+" (repeatable)")
 	return cmd
 }
 
-// runSetup applies both edits and reports each path. It plans everything
-// before writing anything, so a malformed settings.json aborts before the
-// skill is written.
-func runSetup(w io.Writer, dir string, dryRun bool) error {
-	settingsPath := filepath.Join(dir, ".claude", "settings.json")
-	skillPath := filepath.Join(dir, ".claude", "skills", "llm-extract", "SKILL.md")
-
-	settings, err := planSettings(settingsPath)
+// runSetup applies every selected target's edits and reports each path. It
+// plans everything before writing anything, so a malformed settings file in
+// one target aborts before any target is written.
+func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
+	command, err := hookCommand()
 	if err != nil {
 		return err
 	}
-	skill, err := planFile(skillPath, []byte(setupSkill))
-	if err != nil {
-		return err
+	var plans []plannedWrite
+	for _, t := range setupTargetList {
+		if !slices.Contains(targets, t.name) {
+			continue
+		}
+		p, err := t.plan(dir, command)
+		if err != nil {
+			return err
+		}
+		plans = append(plans, p...)
 	}
 
 	changed := false
-	for _, p := range []plannedWrite{settings, skill} {
+	for _, p := range plans {
 		verb := "unchanged"
 		if p.changed {
 			changed = true
@@ -100,6 +139,57 @@ func runSetup(w io.Writer, dir string, dryRun bool) error {
 	return nil
 }
 
+// planClaude is the Claude Code target: the hook in .claude/settings.json and
+// the Agent Skill.
+func planClaude(dir, command string) ([]plannedWrite, error) {
+	settings, err := planHooks(filepath.Join(dir, ".claude", "settings.json"), command)
+	if err != nil {
+		return nil, err
+	}
+	skill, err := planFile(filepath.Join(dir, ".claude", "skills", "llm-extract", "SKILL.md"), []byte(setupSkill))
+	if err != nil {
+		return nil, err
+	}
+	return []plannedWrite{settings, skill}, nil
+}
+
+// hookCommand is the command the hooks run: the bare name when PATH finds
+// it, otherwise this binary's absolute path, quoted for the shell if needed.
+// A hook naming a binary that cannot be found would fail at every session
+// start, so failing to locate one is an error.
+func hookCommand() (string, error) {
+	if _, err := setupLookPath(setupBinary); err == nil {
+		return setupBinary, nil
+	}
+	exe, err := setupExecutable()
+	if err != nil {
+		return "", fmt.Errorf("%s is not on PATH and its own path is unknown; add it to PATH and re-run: %w", setupBinary, err)
+	}
+	return shellQuote(exe), nil
+}
+
+// shellQuote single-quotes s unless every byte is safe unquoted.
+func shellQuote(s string) string {
+	safe := func(r rune) bool {
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_-./:\\", r)
+	}
+	if strings.IndexFunc(s, func(r rune) bool { return !safe(r) }) < 0 {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// isOurCommand reports whether a hook command runs llm-extract with no
+// arguments, by bare name or by any path, quoted or not. That is how a rerun
+// finds the entry it wrote before the binary moved.
+func isOurCommand(c string) bool {
+	if len(c) >= 2 && strings.HasPrefix(c, "'") && strings.HasSuffix(c, "'") {
+		c = strings.ReplaceAll(c[1:len(c)-1], `'\''`, "'")
+	}
+	base := strings.TrimSuffix(filepath.Base(c), ".exe")
+	return base == setupBinary && (c == setupBinary || filepath.IsAbs(c))
+}
+
 type plannedWrite struct {
 	path    string
 	data    []byte
@@ -114,10 +204,13 @@ func planFile(path string, want []byte) (plannedWrite, error) {
 	return plannedWrite{path: path, data: want, changed: err != nil || !bytes.Equal(have, want)}, nil
 }
 
-// planSettings merges the hook into settings.json. A file that is not a JSON
-// object, or whose hooks do not have the expected shape, is an error: guessing
-// would mean overwriting the user's configuration.
-func planSettings(path string) (plannedWrite, error) {
+// planHooks merges the SessionStart hook into a settings file with a "hooks"
+// object, the shape Claude Code's settings.json and Codex's hooks.json share.
+// An entry of ours that runs a different path, because the binary moved, is
+// pointed at command. A file that is not a JSON object, or whose hooks do not
+// have the expected shape, is an error: guessing would mean overwriting the
+// user's configuration.
+func planHooks(path, command string) (plannedWrite, error) {
 	settings := map[string]any{}
 	raw, err := os.ReadFile(path)
 	switch {
@@ -140,12 +233,15 @@ func planSettings(path string) (plannedWrite, error) {
 			return plannedWrite{}, fmt.Errorf(`%s: "hooks.SessionStart" is not a list`, path)
 		}
 	}
-	if hasHook(groups) {
+	found, repaired := repairHooks(groups, command)
+	if found && !repaired {
 		return plannedWrite{path: path, data: raw}, nil
 	}
-	groups = append(groups, map[string]any{
-		"hooks": []any{map[string]any{"type": "command", "command": setupHookCommand}},
-	})
+	if !found {
+		groups = append(groups, map[string]any{
+			"hooks": []any{map[string]any{"type": "command", "command": command}},
+		})
+	}
 	hooks["SessionStart"] = groups
 	settings["hooks"] = hooks
 
@@ -168,20 +264,77 @@ func childMap(m map[string]any, key, path string) (map[string]any, error) {
 	return c, nil
 }
 
-// hasHook reports whether any SessionStart group already runs our command.
-func hasHook(groups []any) bool {
+// repairHooks finds the SessionStart entries that run llm-extract and points
+// any that run something other than command at command, in place.
+func repairHooks(groups []any, command string) (found, repaired bool) {
 	for _, g := range groups {
 		gm, _ := g.(map[string]any)
 		hs, _ := gm["hooks"].([]any)
 		for _, h := range hs {
 			hm, _ := h.(map[string]any)
-			if hm["command"] == setupHookCommand {
-				return true
+			c, _ := hm["command"].(string)
+			if !isOurCommand(c) {
+				continue
+			}
+			found = true
+			if c != command {
+				hm["command"] = command
+				repaired = true
 			}
 		}
 	}
-	return false
+	return found, repaired
 }
+
+// targetNames lists the valid --target values.
+func targetNames() []string {
+	names := make([]string, len(setupTargetList))
+	for i, t := range setupTargetList {
+		names[i] = t.name
+	}
+	return names
+}
+
+// targetList is the --target flag. It rejects an unknown target while
+// parsing, so cobra reports it as an invalid argument (exit 2) before
+// anything is planned. The first Set replaces the default; later ones add.
+type targetList struct {
+	names   []string
+	changed bool
+}
+
+func newTargetList() *targetList { return &targetList{names: targetNames()} }
+
+func (l *targetList) String() string { return "[" + strings.Join(l.names, ",") + "]" }
+
+func (l *targetList) Type() string { return "target" }
+
+func (l *targetList) Set(v string) error {
+	var add []string
+	for _, n := range strings.Split(v, ",") {
+		n = strings.TrimSpace(n)
+		if !slices.Contains(targetNames(), n) {
+			return fmt.Errorf("unknown target %q; use one of: %s", n, strings.Join(targetNames(), ", "))
+		}
+		add = append(add, n)
+	}
+	if !l.changed {
+		l.names = nil
+		l.changed = true
+	}
+	l.names = append(l.names, add...)
+	return nil
+}
+
+func (l *targetList) Append(v string) error { return l.Set(v) }
+
+func (l *targetList) Replace(vs []string) error {
+	l.names = append([]string(nil), vs...)
+	l.changed = false
+	return nil
+}
+
+func (l *targetList) GetSlice() []string { return append([]string(nil), l.names...) }
 
 func init() {
 	RootCmd.AddCommand(newSetupCmd())
