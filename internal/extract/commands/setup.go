@@ -36,7 +36,7 @@ var (
 // the target needs, read and merged but not yet written.
 type setupTarget struct {
 	name string
-	plan func(dir, command string) ([]plannedWrite, error)
+	plan func(dir, bin string) ([]plannedWrite, error)
 }
 
 // setupTargetList is every target, in the order they are written. With no
@@ -44,6 +44,7 @@ type setupTarget struct {
 var setupTargetList = []setupTarget{
 	{name: "claude", plan: planClaude},
 	{name: "codex", plan: planCodex},
+	{name: "opencode", plan: planOpenCode},
 }
 
 // setupSkill is the Agent Skill written to .claude/skills/llm-extract/SKILL.md.
@@ -66,18 +67,20 @@ A failed fetch or model call exits non-zero with the reason on stderr. Treat tha
 func newSetupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "setup",
-		Short: "Install the SessionStart hook for Claude Code and Codex in a project",
+		Short: "Register llm-extract with Claude Code, Codex and OpenCode in a project",
 		Long: `Register llm-extract with coding agents in a project, under the project
 directory:
 
-  claude  a SessionStart hook in .claude/settings.json and an Agent Skill in
-          .claude/skills/llm-extract/SKILL.md
-  codex   a SessionStart hook in .codex/hooks.json
+  claude    a SessionStart hook in .claude/settings.json and an Agent Skill in
+            .claude/skills/llm-extract/SKILL.md
+  codex     a SessionStart hook in .codex/hooks.json
+  opencode  a plugin in .opencode/plugins/llm-extract.js that adds the home
+            view to each session
 
 --target picks the agents (repeat it or give a comma list); the default is
-all of them. The hook runs llm-extract by name when it is on PATH, and by
+all of them. The hooks run llm-extract by name when it is on PATH, and by
 absolute path otherwise; running setup again after the binary moves points
-the hook at the new path.
+them at the new path.
 
 Existing settings keys and hooks are kept. Running it again changes nothing.
 It never prompts, makes no network or model call, and never writes outside
@@ -97,7 +100,7 @@ the project directory (in particular, not to your home directory).`,
 // plans everything before writing anything, so a malformed settings file in
 // one target aborts before any target is written.
 func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
-	command, err := hookCommand()
+	bin, err := hookBinary()
 	if err != nil {
 		return err
 	}
@@ -106,7 +109,7 @@ func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
 		if !slices.Contains(targets, t.name) {
 			continue
 		}
-		p, err := t.plan(dir, command)
+		p, err := t.plan(dir, bin)
 		if err != nil {
 			return err
 		}
@@ -141,8 +144,8 @@ func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
 
 // planClaude is the Claude Code target: the hook in .claude/settings.json and
 // the Agent Skill.
-func planClaude(dir, command string) ([]plannedWrite, error) {
-	settings, err := planHooks(filepath.Join(dir, ".claude", "settings.json"), command)
+func planClaude(dir, bin string) ([]plannedWrite, error) {
+	settings, err := planHooks(filepath.Join(dir, ".claude", "settings.json"), shellQuote(bin))
 	if err != nil {
 		return nil, err
 	}
@@ -153,11 +156,11 @@ func planClaude(dir, command string) ([]plannedWrite, error) {
 	return []plannedWrite{settings, skill}, nil
 }
 
-// hookCommand is the command the hooks run: the bare name when PATH finds
-// it, otherwise this binary's absolute path, quoted for the shell if needed.
-// A hook naming a binary that cannot be found would fail at every session
-// start, so failing to locate one is an error.
-func hookCommand() (string, error) {
+// hookBinary is the binary the hooks run: the bare name when PATH finds it,
+// otherwise this binary's absolute path. A hook naming a binary that cannot
+// be found would fail at every session start, so failing to locate one is an
+// error.
+func hookBinary() (string, error) {
 	if _, err := setupLookPath(setupBinary); err == nil {
 		return setupBinary, nil
 	}
@@ -165,7 +168,7 @@ func hookCommand() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not on PATH and its own path is unknown; add it to PATH and re-run: %w", setupBinary, err)
 	}
-	return shellQuote(exe), nil
+	return exe, nil
 }
 
 // shellQuote single-quotes s unless every byte is safe unquoted.
