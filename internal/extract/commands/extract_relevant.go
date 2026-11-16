@@ -140,7 +140,9 @@ Examples:
 
 API Configuration:
   Set the OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.
-  Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.`,
+  Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.
+  ANTHROPIC_API_KEY needs OPENAI_BASE_URL: the client speaks the
+  OpenAI-compatible API and never sends that key to the OpenAI default.`,
 		Args: cobra.NoArgs,
 		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
 		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
