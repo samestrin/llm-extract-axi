@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -227,8 +226,14 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	}
 
 	resetModelUse()
+	// cause keeps the original error chain, so a usage-marked configuration
+	// error still exits 2 after it has been printed as part of the result.
+	// Rebuilding it with errors.New(result.Error) dropped the marker and
+	// exited 1, telling an agent a retry might fix a broken key configuration.
+	var cause error
 	links, err := fetchAndExtractLinks(cmd.Context(), extractLinksURL, extractLinksTimeout)
 	if err != nil {
+		cause = err
 		result.Error = err.Error()
 	} else {
 		// If context is provided, use LLM ranking instead of heuristic
@@ -239,7 +244,8 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 			found := len(links)
 			ranked, err := rankLinksWithLLM(cmd.Context(), links, extractLinksContext, extractLinksTimeout)
 			if err != nil {
-				result.Error = fmt.Sprintf("LLM ranking failed: %v", err)
+				cause = fmt.Errorf("LLM ranking failed: %w", err)
+				result.Error = cause.Error()
 				result.Truncated = failedRankingTruncation(found)
 			} else {
 				links = ranked
@@ -262,9 +268,10 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// The output already carries the error; returning it as well is what makes
-	// the exit code non-zero.
+	// the exit code non-zero. The cause keeps the chain, so a configuration
+	// error's usage marker survives to output.ExitCodeFor.
 	if result.Error != "" {
-		return reportedError{errors.New(result.Error)}
+		return reportedError{cause}
 	}
 	return nil
 }
@@ -275,7 +282,7 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	const usage = "Run 'llm-extract extract-links --help' for usage"
 	switch {
 	case result.Error != "" && strings.HasPrefix(result.Error, "LLM ranking failed"):
-		return []string{"Check OPENAI_API_KEY or ANTHROPIC_API_KEY, or drop --context to rank by page position without a model", usage}
+		return []string{"Check the key configuration: OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL; or drop --context to rank by page position without a model", usage}
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
