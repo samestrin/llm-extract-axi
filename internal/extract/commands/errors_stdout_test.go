@@ -9,7 +9,7 @@ import (
 	goaxi "github.com/samestrin/go-axi"
 )
 
-// errorFormat is one output format and how to read an error printed in it.
+// stdoutFormat is one output format and how to read an error printed in it.
 type stdoutFormat struct {
 	name string
 	flag string // "" is the default, TOON
