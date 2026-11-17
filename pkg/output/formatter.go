@@ -33,9 +33,10 @@ func New(jsonOutput, minimal bool, w io.Writer) *Formatter {
 		JSON:    jsonOutput,
 		Minimal: minimal,
 		// Adopted from the package default rather than taken as a fourth
-		// argument, so every existing call site gains --axi without being
-		// edited. See SetDefaultAXI.
-		AXI:    defaultAXI,
+		// argument, so every existing call site gains TOON without being
+		// edited. See SetDefaultAXI. A caller that asks for JSON gets JSON:
+		// TOON is the default encoding, not an override of an explicit one.
+		AXI:    defaultAXI && !jsonOutput,
 		Writer: w,
 	}
 }

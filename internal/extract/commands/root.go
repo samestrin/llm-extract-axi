@@ -39,10 +39,23 @@ func IsVersionFlag(arg string) bool {
 	return arg == "-v" || arg == "-V" || arg == "--version"
 }
 
-// GlobalAXIOutput selects TOON output. It reaches every command through
+// GlobalAXIOutput is true when this run prints TOON: the default, turned off
+// by --plain, --axi=false or a command's --json. The root's PersistentPreRunE
+// sets it once the flags are parsed, and it reaches every command through
 // output.SetDefaultAXI rather than a per-command flag, because each command
 // builds its own formatter with output.New(json, min, w).
 var GlobalAXIOutput bool
+
+// plainOutput and axiOutput hold --plain and --axi as parsed. --axi is kept so
+// existing callers do not break: on it selects the default, and --axi=false
+// is --plain.
+var (
+	plainOutput bool
+	axiOutput   = true
+)
+
+// errPlainJSON is the usage error for asking for text and JSON at once.
+var errPlainJSON = errors.New("--plain (or --axi=false) and --json cannot be used together: pick one")
 
 // RootCmd is the base command when called without any subcommands.
 var RootCmd = &cobra.Command{
@@ -56,10 +69,20 @@ when it has to, and says so.`,
 	Args:          cobra.NoArgs,
 	SilenceErrors: true,
 	SilenceUsage:  true,
-	// Published unconditionally, including when the flag is false: assigning
-	// only true would leave the previous in-process run's setting in place.
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	// Published unconditionally, including when TOON is off: assigning only
+	// true would leave the previous in-process run's setting in place.
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		plain := plainOutput || !axiOutput
+		jsonOut := false
+		if f := cmd.Flags().Lookup("json"); f != nil {
+			jsonOut = f.Value.String() == "true"
+		}
+		if plain && jsonOut {
+			return output.UsageError(errPlainJSON)
+		}
+		GlobalAXIOutput = !plain && !jsonOut
 		output.SetDefaultAXI(GlobalAXIOutput)
+		return nil
 	},
 	// A bare run shows content, not help: where the binary is, what it does,
 	// and which commands reach outside. --help still prints help.
@@ -140,8 +163,8 @@ func buildHomeView() homeView {
 	return view
 }
 
-// printHome writes the bare-run view: TOON with a help[] block under --axi,
-// a table otherwise.
+// printHome writes the bare-run view: TOON with a help[] block by default, a
+// table under --plain.
 func printHome(w io.Writer) error {
 	view := buildHomeView()
 	if GlobalAXIOutput {
@@ -216,7 +239,8 @@ func tildeHome(path, home string) string {
 }
 
 func init() {
-	RootCmd.PersistentFlags().BoolVar(&GlobalAXIOutput, "axi", false, "Output as TOON (AXI token-dense format)")
+	RootCmd.PersistentFlags().BoolVar(&plainOutput, "plain", false, "Output as text instead of TOON")
+	RootCmd.PersistentFlags().BoolVar(&axiOutput, "axi", true, "Output as TOON, the default (--axi=false is --plain)")
 }
 
 // Execute runs the root command against the process arguments and exits.
@@ -232,6 +256,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// is absent, so a second in-process run would inherit the first one's
 	// flags. The shipped binary runs once per process; tests do not.
 	resetFlags(RootCmd)
+	// The pre-run publishes the encoding only for a run that reaches a
+	// command, and a test may then call a command directly; it should find
+	// the zero state, not the last run's.
+	defer func() {
+		GlobalAXIOutput = false
+		output.SetDefaultAXI(false)
+	}()
 	// A lone version flag is answered here, because cobra's own flag knows
 	// only --version and would reject -V.
 	if len(args) == 1 && IsVersionFlag(args[0]) {
@@ -252,7 +283,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return code
 	}
-	// Under --axi the error is on stdout in TOON, the encoding a success would
+	// Under TOON the error is on stdout in TOON, the encoding a success would
 	// have used, so a caller reading one stream learns that the command failed
 	// and what to do next. A result that already carries its error is not
 	// printed twice: two documents would not decode as one.
@@ -267,15 +298,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 var errInvalidURL = errors.New("invalid URL: must start with http:// or https://")
 
 // reportedError is an error a command has already printed as part of its
-// result. It still sets the exit code; under --axi it is not printed again.
+// result. It still sets the exit code; under TOON it is not printed again.
 type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
 
 // wantAXI reports whether this run's error is printed as TOON. On a malformed
-// invocation parsing may have stopped before the last --axi, so the parsed
-// flag can be stale and the arguments are scanned instead, last occurrence
-// winning. Otherwise the parsed flag is the answer.
+// invocation parsing may have stopped before the last format flag, so the
+// parsed flags can be stale and the arguments are scanned instead, last
+// occurrence winning. Otherwise the parsed flags are the answer.
 func wantAXI(cmd *cobra.Command, args []string, code int) bool {
 	if code == int(goaxi.ExitUsage) {
 		return argsWantAXI(cmd, args)
@@ -283,11 +314,13 @@ func wantAXI(cmd *cobra.Command, args []string, code int) bool {
 	return GlobalAXIOutput
 }
 
-// argsWantAXI scans args for --axi the way pflag would read it: the last
-// occurrence wins, a value after = is a bool, nothing after "--" is a flag,
-// and the argument after a flag that takes a value is that value, not a flag,
-// so `--url --axi` leaves --axi off. cmd is the command the run reached; its
-// flags, own and inherited, say which ones take a value.
+// argsWantAXI scans args for the format flags the way pflag would read them
+// and applies the pre-run's rule: TOON unless --plain, --axi=false or --json.
+// The last occurrence of each flag wins, a value after = is a bool, nothing
+// after "--" is a flag, and the argument after a flag that takes a value is
+// that value, not a flag, so `--url --plain` leaves --plain off. cmd is the
+// command the run reached; its flags, own and inherited, say which ones take a
+// value.
 func argsWantAXI(cmd *cobra.Command, args []string) bool {
 	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
 	lookup := func(name string) *pflag.Flag {
@@ -302,17 +335,33 @@ func argsWantAXI(cmd *cobra.Command, args []string) bool {
 		}
 		return cmd.InheritedFlags().ShorthandLookup(c)
 	}
-	want := false
+	// boolArg reads a bool flag written as --name or --name=value; an
+	// unparsable value is reported as its own usage error, and leaves the
+	// flag where it was.
+	boolArg := func(a, name string, cur bool) bool {
+		if a == "--"+name {
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--"+name+"="); ok {
+			if b, err := strconv.ParseBool(v); err == nil {
+				return b
+			}
+		}
+		return cur
+	}
+	plain, axi, jsonOut := false, true, false
+scan:
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--":
-			return want
-		case a == "--axi":
-			want = true
-		case strings.HasPrefix(a, "--axi="):
-			b, err := strconv.ParseBool(strings.TrimPrefix(a, "--axi="))
-			want = err == nil && b
+			break scan
+		case a == "--plain" || strings.HasPrefix(a, "--plain="):
+			plain = boolArg(a, "plain", plain)
+		case a == "--axi" || strings.HasPrefix(a, "--axi="):
+			axi = boolArg(a, "axi", axi)
+		case a == "--json" || strings.HasPrefix(a, "--json="):
+			jsonOut = boolArg(a, "json", jsonOut)
 		case strings.HasPrefix(a, "--"):
 			if !strings.Contains(a, "=") && takesValue(lookup(a[2:])) {
 				i++
@@ -336,7 +385,7 @@ func argsWantAXI(cmd *cobra.Command, args []string) bool {
 			}
 		}
 	}
-	return want
+	return !plain && axi && !jsonOut
 }
 
 // axiErrorDoc builds the TOON error for err: the {error, message} shape of
@@ -393,12 +442,12 @@ func flagNames(cmd *cobra.Command) []string {
 	return names
 }
 
-// resetFlags returns every flag on c and its subcommands to its default.
+// resetFlags returns every flag on c and its subcommands to its default. A
+// flag that was not Changed is reset too: its variable can still hold a value
+// written by a command built outside this tree, and the pre-run reads the
+// variable, not Changed.
 func resetFlags(c *cobra.Command) {
 	reset := func(f *pflag.Flag) {
-		if !f.Changed {
-			return
-		}
 		// Set on a slice flag appends once the flag has been set, so slices
 		// are replaced wholesale instead.
 		if sv, ok := f.Value.(pflag.SliceValue); ok {

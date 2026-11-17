@@ -29,34 +29,36 @@ func axiOffAfter(t *testing.T) {
 // These tests defend the five findings of the v1.1.0 release gate.
 
 // Defends finding 2: pflag reads the argument after a value-taking flag as its
-// value, so `--url --axi` sets url to "--axi" and leaves --axi off. The scan
-// for --axi on a failed parse must agree, or a plain run gets TOON.
+// value, so `--url --plain` sets url to "--plain" and leaves --plain off. The
+// scan for the format flags on a failed parse must agree, or a TOON run gets
+// text.
 func TestRunValueFlagSwallowsAXI(t *testing.T) {
 	axiOffAfter(t)
 	for _, args := range [][]string{
-		{"extract-links", "--url", "--axi", "--bogus"},
-		{"extract-relevant", "-o", "--axi", "--bogus"},
-		{"extract-relevant", "--context", "--axi", "--bogus"},
+		{"extract-links", "--url", "--plain", "--bogus"},
+		{"extract-relevant", "-o", "--plain", "--bogus"},
+		{"extract-relevant", "--context", "--axi=false", "--bogus"},
+	} {
+		code, stdout, stderr := runCLI(t, args...)
+		if code != 2 || stderr != "" {
+			t.Errorf("%v: exit %d, want 2; stderr %q", args, code, stderr)
+		}
+		axiError(t, stdout)
+	}
+	// A value given with = consumes nothing, so a following --plain still
+	// counts, and so does --json, which keeps its errors on stderr.
+	for _, args := range [][]string{
+		{"extract-links", "--url=http://x", "--plain", "--bogus"},
+		{"extract-links", "--json", "--axi", "--bogus"},
+		{"extract-relevant", "-ofile", "--plain", "--bogus"},
 	} {
 		code, stdout, stderr := runCLI(t, args...)
 		if code != 2 {
 			t.Errorf("%v: exit %d, want 2", args, code)
 		}
 		if stdout != "" || !strings.HasPrefix(stderr, "Error: ") {
-			t.Errorf("%v: want the plain error on stderr, got stdout %q stderr %q", args, stdout, stderr)
+			t.Errorf("%v: want the text error on stderr, got stdout %q stderr %q", args, stdout, stderr)
 		}
-	}
-	// A value given with = consumes nothing, so a following --axi still counts.
-	for _, args := range [][]string{
-		{"extract-links", "--url=http://x", "--axi", "--bogus"},
-		{"extract-links", "--json", "--axi", "--bogus"},
-		{"extract-relevant", "-ofile", "--axi", "--bogus"},
-	} {
-		code, stdout, stderr := runCLI(t, args...)
-		if code != 2 || stderr != "" {
-			t.Errorf("%v: exit %d stderr %q", args, code, stderr)
-		}
-		axiError(t, stdout)
 	}
 }
 
@@ -165,12 +167,12 @@ func TestExtractRelevantReportsTruncatedInput(t *testing.T) {
 	if s, _ := doc.(map[string]any)["truncated"].(string); !strings.Contains(s, "30000 bytes") {
 		t.Errorf("--axi lacks the truncation note:\n%s", out)
 	}
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c")
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--plain")
 	if !strings.HasPrefix(out, "TRUNCATED: ") {
 		t.Errorf("text lacks the truncation note:\n%s", out)
 	}
 	// The plain -o summary is a success report too.
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "-o", filepath.Join(t.TempDir(), "o.txt"))
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "-o", filepath.Join(t.TempDir(), "o.txt"), "--plain")
 	if !strings.Contains(out, "Truncated: model input cut at 30000 bytes") {
 		t.Errorf("-o summary lacks the truncation note:\n%s", out)
 	}
@@ -247,7 +249,7 @@ func TestExtractLinksReportsTruncatedRankingInput(t *testing.T) {
 	if !strings.Contains(out, `"tr":`) {
 		t.Errorf("--min lacks the truncation note:\n%s", out)
 	}
-	_, out, _ = runCLI(t, "extract-links", "--url", manyLinksPage(t, 120), "--context", "c")
+	_, out, _ = runCLI(t, "extract-links", "--url", manyLinksPage(t, 120), "--context", "c", "--plain")
 	if !strings.Contains(out, "Truncated: ") {
 		t.Errorf("text lacks the truncation note:\n%.400s", out)
 	}

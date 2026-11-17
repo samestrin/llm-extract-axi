@@ -108,3 +108,20 @@ func TestExitCodeForMarkedUsageError(t *testing.T) {
 		})
 	}
 }
+
+// Defends UsageError: a malformed invocation cobra cannot see, such as
+// --plain with --json, exits 2 whatever its wording, and still does once a
+// caller wraps it. Without the errors.As check it would read as a runtime
+// failure (exit 1) and a caller would retry it unchanged.
+func TestExitCodeForUsageError(t *testing.T) {
+	err := UsageError(errors.New("--plain and --json cannot be used together"))
+	if got := ExitCodeFor(err); got != 2 {
+		t.Errorf("ExitCodeFor(UsageError) = %d, want 2", got)
+	}
+	if got := ExitCodeFor(fmt.Errorf("run: %w", err)); got != 2 {
+		t.Errorf("ExitCodeFor(wrapped UsageError) = %d, want 2", got)
+	}
+	if err.Error() != "--plain and --json cannot be used together" {
+		t.Errorf("UsageError changed the message: %q", err.Error())
+	}
+}

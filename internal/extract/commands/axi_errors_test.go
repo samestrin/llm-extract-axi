@@ -95,7 +95,7 @@ func TestAXIErrorsGoToStdoutAsTOON(t *testing.T) {
 		{"fetch bad URL", []string{"fetch", "not-a-url", "--axi"}, 1, "invalid URL", "http://"},
 		{"extract-links bad URL", []string{"extract-links", "--url", "ftp://x", "--axi"}, 1, "invalid URL", "http://"},
 		{"failed fetch", []string{"fetch", down, "--axi"}, 1, "500", "fetch --help"},
-		{"failed fetch --json", []string{"fetch", "--json", down, "--axi"}, 1, "500", "fetch --help"},
+		{"failed fetch, default", []string{"fetch", down}, 1, "500", "fetch --help"},
 		{"unknown command", []string{"no-such-command", "--axi"}, 2, `"no-such-command"`, "llm-extract --help"},
 		{"required flag", []string{"extract-links", "--axi"}, 2, `"url"`, "extract-links --help"},
 	}
@@ -237,14 +237,18 @@ func TestAXIReportedResultErrorIsPrintedOnce(t *testing.T) {
 	}
 }
 
-// Defends Q1: without --axi an error stays on stderr, as "Error: " and the
-// message, with nothing on stdout -- including --axi=false, which is plain.
+// Defends Q1: under --plain an error stays on stderr, as "Error: " and the
+// message, with nothing on stdout -- including --axi=false, which is --plain,
+// and --json, which prints its errors as it did before TOON was the default.
 func TestPlainErrorsStayOnStderr(t *testing.T) {
 	url, _ := countingServer(t, http.StatusOK)
 	for _, args := range [][]string{
-		{"fetch", "--bogus", url},
+		{"--plain", "fetch", "--bogus", url},
 		{"--axi=false", "fetch", "--bogus", url},
-		{"fetch", "not-a-url"},
+		{"fetch", "--plain", "not-a-url"},
+		{"fetch", "--json", "--bogus", url},
+		{"fetch", "--json", "not-a-url"},
+		{"fetch", "--axi", "--json", "not-a-url"},
 	} {
 		code, stdout, stderr := runCLI(t, args...)
 		if code == 0 {
@@ -259,23 +263,34 @@ func TestPlainErrorsStayOnStderr(t *testing.T) {
 	}
 }
 
-// Defends the scan for --axi on a failed parse following pflag's own rules: the
-// last occurrence wins, a value after = is parsed as a bool, and nothing after
-// "--" is a flag.
+// Defends the scan for the format flags on a failed parse following pflag's
+// own rules and the pre-run's: TOON unless --plain, --axi=false or --json; the
+// last occurrence of each flag wins, a value after = is parsed as a bool (an
+// unparsable one changes nothing), and nothing after "--" is a flag.
 func TestArgsWantAXI(t *testing.T) {
 	cases := []struct {
 		args []string
 		want bool
 	}{
-		{nil, false},
+		{nil, true},
 		{[]string{"--axi"}, true},
 		{[]string{"--axi=true"}, true},
 		{[]string{"--axi=false"}, false},
 		{[]string{"--axi", "--axi=0"}, false},
 		{[]string{"--axi=false", "--axi"}, true},
-		{[]string{"--axi=nonsense"}, false},
-		{[]string{"--", "--axi"}, false},
-		{[]string{"-axi"}, false},
+		{[]string{"--axi=nonsense"}, true},
+		{[]string{"--", "--axi=false"}, true},
+		{[]string{"-axi"}, true},
+		{[]string{"--plain"}, false},
+		{[]string{"--plain=true"}, false},
+		{[]string{"--plain", "--plain=false"}, true},
+		{[]string{"--plain=nonsense"}, true},
+		{[]string{"--axi", "--plain"}, false},
+		{[]string{"--plain", "--axi"}, false},
+		{[]string{"--json"}, false},
+		{[]string{"--json", "--json=false"}, true},
+		{[]string{"--axi", "--json"}, false},
+		{[]string{"--", "--plain"}, true},
 	}
 	for _, tc := range cases {
 		if got := argsWantAXI(RootCmd, tc.args); got != tc.want {

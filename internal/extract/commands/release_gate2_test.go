@@ -122,7 +122,7 @@ func TestExtractLinksRankingErrorKeepsTruncationNote(t *testing.T) {
 		if s, _ := doc.(map[string]any)["truncated"].(string); !strings.Contains(s, "25000 bytes") {
 			t.Errorf("%s: --axi lacks the truncation note", name)
 		}
-		_, out, _ = runCLI(t, "extract-links", "--url", manyLinksPage(t, 120), "--context", "c")
+		_, out, _ = runCLI(t, "extract-links", "--url", manyLinksPage(t, 120), "--context", "c", "--plain")
 		if !strings.Contains(out, "Truncated: ") {
 			t.Errorf("%s: text lacks the truncation note", name)
 		}

@@ -420,12 +420,12 @@ func TestExtractRelevantHonoursAXI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runExtractRelevantCmd(t, "--path", src, "--context", "anything", "--json")
+	out, err := runExtractRelevantCmd(t, "--path", src, "--context", "anything")
 	if err != nil {
 		t.Fatalf("extract-relevant: %v", err)
 	}
-	if strings.HasPrefix(strings.TrimSpace(out), "{") {
-		t.Errorf("--axi was accepted and ignored; JSON was emitted:\n%s", out)
+	if strings.HasPrefix(strings.TrimSpace(out), "{") || !strings.Contains(out, "help[") {
+		t.Errorf("TOON was on and ignored; not TOON with help[]:\n%s", out)
 	}
 	if !strings.Contains(out, "the extracted text") {
 		t.Errorf("AXI output lost the extraction:\n%s", out)

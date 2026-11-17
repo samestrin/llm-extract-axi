@@ -171,7 +171,7 @@ func TestExtractLinksZeroResultIsExplicit(t *testing.T) {
 		t.Errorf("minimal zero result not explicit: %s", out)
 	}
 
-	_, out, _ = runCLI(t, "extract-links", "--url", page)
+	_, out, _ = runCLI(t, "extract-links", "--url", page, "--plain")
 	if !strings.Contains(out, "Total Links: 0") || !strings.Contains(out, noLinksMessage) {
 		t.Errorf("text zero result not explicit: %s", out)
 	}
@@ -202,7 +202,7 @@ func TestExtractLinksTextShowsModelAndBytesSent(t *testing.T) {
 		return `{"rankings":[{"index":0,"score":90}]}`
 	}))
 	t.Setenv("OPENAI_MODEL", "test-model-x")
-	_, out, _ := runCLI(t, "extract-links", "--url", linksPage(t), "--context", "start")
+	_, out, _ := runCLI(t, "extract-links", "--url", linksPage(t), "--context", "start", "--plain")
 	if !strings.Contains(out, "Model: test-model-x | Bytes sent: ") {
 		t.Errorf("text output lost model and bytes sent:\n%s", out)
 	}

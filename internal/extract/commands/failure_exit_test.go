@@ -136,7 +136,7 @@ func TestExtractLinksRankingAPIErrorExitsNonZero(t *testing.T) {
 // so the partial result is visible and labelled as partial.
 func TestExtractLinksRankingFailureTextShowsErrorAndLinks(t *testing.T) {
 	noAPIKey(t)
-	code, out, _ := runCLI(t, "extract-links", "--url", linksPage(t), "--context", "start")
+	code, out, _ := runCLI(t, "extract-links", "--url", linksPage(t), "--context", "start", "--plain")
 	if code == 0 {
 		t.Fatalf("ranking with no API key exited 0:\n%s", out)
 	}
@@ -152,7 +152,7 @@ func TestExtractLinksRankingFailureTextShowsErrorAndLinks(t *testing.T) {
 // failure paths are tested side by side at the exit-code level).
 func TestExtractRelevantNoKeyExitsNonZero(t *testing.T) {
 	noAPIKey(t)
-	code, _, stderr := runCLI(t, "extract-relevant", "--path", t.TempDir(), "--context", "x")
+	code, _, stderr := runCLI(t, "extract-relevant", "--path", t.TempDir(), "--context", "x", "--plain")
 	if code == 0 || !strings.Contains(stderr, "API key") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
@@ -308,7 +308,7 @@ func partialDirectory(t *testing.T) string {
 // which --json still carried.
 func TestExtractRelevantPartialDirectoryTextKeepsTheRest(t *testing.T) {
 	dir := partialDirectory(t)
-	code, out, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "x")
+	code, out, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "x", "--plain")
 	if code == 0 {
 		t.Fatalf("a directory with a failed model call exited 0:\n%s", out)
 	}
@@ -341,7 +341,7 @@ func TestExtractRelevantPartialDirectoryOutputFileKeepsTheRest(t *testing.T) {
 // partial to show, so the error line is the whole output, with no empty
 // "Total Links: 0" block after it.
 func TestExtractLinksFetchErrorTextIsOnlyTheError(t *testing.T) {
-	code, out, _ := runCLI(t, "extract-links", "--url", notFoundPage(t))
+	code, out, _ := runCLI(t, "extract-links", "--url", notFoundPage(t), "--plain")
 	if code == 0 {
 		t.Fatalf("a 404 exited 0:\n%s", out)
 	}

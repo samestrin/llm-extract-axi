@@ -79,7 +79,7 @@ func TestCLIFetchChallengeExitsNonZero(t *testing.T) {
 		_, _ = w.Write([]byte("<title>Just a moment...</title>"))
 	}))
 	defer srv.Close()
-	cmd := exec.Command(binary(t, "llm-extract"), "fetch", srv.URL)
+	cmd := exec.Command(binary(t, "llm-extract"), "fetch", "--plain", srv.URL)
 	cmd.Env = append(os.Environ(), "FETCH_MAX_RETRIES=0")
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -157,7 +157,7 @@ func TestCLIExtractRelevantModelErrorExitsNonZero(t *testing.T) {
 	if err := os.WriteFile(src, []byte("body\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(binary(t, "llm-extract"), "extract-relevant", "--path", src, "--context", "x")
+	cmd := exec.Command(binary(t, "llm-extract"), "extract-relevant", "--path", src, "--context", "x", "--plain")
 	cmd.Env = llmEnv("OPENAI_API_KEY=sk-test", "OPENAI_BASE_URL="+llm.URL, "OPENAI_MODEL=fake")
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -199,5 +199,30 @@ func TestCLIExitCodeSeparatesUsageFromFailure(t *testing.T) {
 				t.Errorf("exit %d, want %d\n%s", got, tc.want, out)
 			}
 		})
+	}
+}
+
+// Defends completion's row of the output-mode matrix (TestOutputModeMatrix in
+// internal/extract/commands): the shell script is the same bytes under every
+// format flag, and the flags completion lacks are usage errors. A TOON
+// default that reached the script would break every shell that sources it.
+func TestCLICompletionIgnoresTheOutputMode(t *testing.T) {
+	bin := binary(t, "llm-extract")
+	ref, err := exec.Command(bin, "completion", "bash", "--plain").Output()
+	if err != nil || !strings.HasPrefix(string(ref), "# bash completion") {
+		t.Fatalf("completion bash --plain: %v\n%s", err, ref)
+	}
+	for _, mode := range [][]string{nil, {"--axi"}, {"--axi=false"}} {
+		out, err := exec.Command(bin, append([]string{"completion", "bash"}, mode...)...).Output()
+		if err != nil || string(out) != string(ref) {
+			t.Errorf("completion bash %v: %v; output differs from --plain", mode, err)
+		}
+	}
+	for _, mode := range [][]string{{"--json"}, {"--min"}, {"--plain", "--json"}} {
+		err := exec.Command(bin, append([]string{"completion", "bash"}, mode...)...).Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+			t.Errorf("completion bash %v: %v, want exit 2", mode, err)
+		}
 	}
 }
