@@ -95,8 +95,8 @@ func TestAXIErrorsGoToStdoutAsTOON(t *testing.T) {
 		// retry can succeed, so it is a usage error (exit 2), same as an
 		// Anthropic key with no OPENAI_BASE_URL (EST-6628 F3).
 		{"no API key", []string{"extract-relevant", "--context", "x", "--axi"}, 2, "API key", "OPENAI_API_KEY"},
-		{"fetch bad URL", []string{"fetch", "not-a-url", "--axi"}, 1, "invalid URL", "http://"},
-		{"extract-links bad URL", []string{"extract-links", "--url", "ftp://x", "--axi"}, 1, "invalid URL", "http://"},
+		{"fetch bad URL", []string{"fetch", "not-a-url", "--axi"}, 2, "invalid URL", "http://"},
+		{"extract-links bad URL", []string{"extract-links", "--url", "ftp://x", "--axi"}, 2, "invalid URL", "http://"},
 		{"failed fetch", []string{"fetch", down, "--axi"}, 1, "500", "fetch --help"},
 		{"failed fetch, default", []string{"fetch", down}, 1, "500", "fetch --help"},
 		{"unknown command", []string{"no-such-command", "--axi"}, 2, `"no-such-command"`, "llm-extract --help"},

@@ -210,7 +210,7 @@ Examples:
 
 func runExtractLinks(cmd *cobra.Command, args []string) error {
 	if extractLinksURL == "" {
-		return fmt.Errorf("--url is required")
+		return output.UsageError(fmt.Errorf("--url is required"))
 	}
 
 	// Validate URL
