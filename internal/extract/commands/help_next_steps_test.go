@@ -104,10 +104,12 @@ func TestExtractRelevantHelp(t *testing.T) {
 
 func outputSetOff() { output.SetDefaultAXI(false) }
 
-// Defends T4: a failed model call during --context ranking gets the API-key
-// advice, not the generic fetch advice.
+// Defends T4: a model call that fails on the key during --context ranking
+// gets the API-key advice, not the generic fetch advice. This used a 500 until
+// EST-6877: a server error is not a key problem, and the key advice for it was
+// itself an AC5 review finding (TestExtractLinksRankingHelpNamesTheKeyOnlyForAKeyProblem).
 func TestExtractLinksHelpOnLLMRankingFailure(t *testing.T) {
-	failingLLM(t, 500)
+	failingLLM(t, 401)
 	page := helpPageServer(t, `<html><body><h1><a href="/a">A</a></h1></body></html>`)
 	withAXI(t)
 	h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth"))

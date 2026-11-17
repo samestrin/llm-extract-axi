@@ -19,12 +19,12 @@ const cmdInjectHref = "https://example.com/?a=1&whoami&rem"
 // URL, empty and non-empty), with the prefix each line starts with.
 func allHelpLines(target string) map[string]string {
 	return map[string]string{
-		extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: target}}})[0]: "Read the top link: ",
-		extractLinksHelp(ExtractLinksResult{URL: target})[0]:                                                   "Read the page text instead: ",
-		extractRelevantHelp(ExtractRelevantResult{URL: target})[0]:                                             "Broaden the context: ",
-		extractRelevantHelp(ExtractRelevantResult{URL: target, ExtractedParts: []string{"x"}})[0]:              "Narrow and save it: ",
-		extractRelevantHelp(ExtractRelevantResult{Path: target})[0]:                                            "Broaden the context: ",
-		extractRelevantHelp(ExtractRelevantResult{Path: target, ExtractedParts: []string{"x"}})[0]:             "Narrow and save it: ",
+		extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: target}}}, nil)[0]: "Read the top link: ",
+		extractLinksHelp(ExtractLinksResult{URL: target}, nil)[0]:                                                   "Read the page text instead: ",
+		extractRelevantHelp(ExtractRelevantResult{URL: target})[0]:                                                  "Broaden the context: ",
+		extractRelevantHelp(ExtractRelevantResult{URL: target, ExtractedParts: []string{"x"}})[0]:                   "Narrow and save it: ",
+		extractRelevantHelp(ExtractRelevantResult{Path: target})[0]:                                                 "Broaden the context: ",
+		extractRelevantHelp(ExtractRelevantResult{Path: target, ExtractedParts: []string{"x"}})[0]:                  "Narrow and save it: ",
 	}
 }
 
@@ -46,11 +46,11 @@ func TestHelpCommandLeavesUntrustedValueOut(t *testing.T) {
 			}
 		}
 	}
-	links := extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: cmdInjectHref}}})[0]
+	links := extractLinksHelp(ExtractLinksResult{URL: "https://example.com", Links: []LinkInfo{{Href: cmdInjectHref}}}, nil)[0]
 	if want := "Read the top link: llm-extract extract-relevant --path <links[0].href> --context '<what you need>'"; links != want {
 		t.Errorf("top-link line:\n got %s\nwant %s", links, want)
 	}
-	page := extractLinksHelp(ExtractLinksResult{URL: cmdInjectHref})[0]
+	page := extractLinksHelp(ExtractLinksResult{URL: cmdInjectHref}, nil)[0]
 	if !strings.Contains(page, "--path <url>") {
 		t.Errorf("empty-page line does not name url: %s", page)
 	}

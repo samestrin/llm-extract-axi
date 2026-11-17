@@ -1,6 +1,6 @@
 # llm-extract-axi
 
-A CLI for agents that pulls only what is needed from a large file or a web page, without filling the agent's context.
+llm-extract-axi is a single Go binary that gives an AI agent, or you, commands to fetch a web page and pull only what is needed from a large file or page, with [AXI](https://axi.md)-compliant output built for agents to parse.
 
 [![test](https://github.com/samestrin/llm-extract-axi/actions/workflows/test.yml/badge.svg)](https://github.com/samestrin/llm-extract-axi/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/samestrin/llm-extract-axi)](https://github.com/samestrin/llm-extract-axi/releases)
@@ -154,7 +154,7 @@ Output modes: TOON by default, `--plain` for human-readable text, `--json` for s
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a rejected flag value such as `fetch --format text`, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
 

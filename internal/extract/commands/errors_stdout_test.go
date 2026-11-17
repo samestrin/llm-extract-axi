@@ -71,8 +71,9 @@ func TestErrorsGoToStdoutInEveryFormat(t *testing.T) {
 			{"runtime error", withFlag("extract-links", "--url", "not-a-url"), int(goaxi.ExitError)},
 			{"failed fetch", withFlag("fetch", failing, "--retries", "0"), int(goaxi.ExitError)},
 			// cobra checks the argument count before the pre-run publishes
-			// the format, so the format must come from the parsed flags.
-			{"missing argument", withFlag("fetch"), int(goaxi.ExitError)},
+			// the format, so the format must come from the flags as given.
+			// A missing URL is a malformed invocation, exit 2 (EST-6877).
+			{"missing argument", withFlag("fetch"), int(goaxi.ExitUsage)},
 		}
 		for _, c := range cases {
 			t.Run(f.name+"/"+c.name, func(t *testing.T) {

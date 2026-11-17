@@ -30,7 +30,7 @@ The prose summary never reaches stdout in TOON or `--json`: prose in front of a 
 
 ## Empty results
 
-A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and exits non-zero. `error` is what marks a failure, not a missing `total`: a failed `extract-relevant` run and a failed `extract-links` fetch carry no total, but a failed `extract-links --context` ranking keeps the unranked links and their `total` beside the `error` (see partial results below). `total` without `error` means the run succeeded.
+A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and exits non-zero. `error` is what marks a failure, not a missing `total`: a failed `extract-relevant` run and a failed `extract-links` fetch carry no total, but a failed `extract-links --context` ranking keeps the unranked links and their `total` beside the `error` (see partial results below). `total` without `error` means the run succeeded. `extract-relevant --path` on a directory with no text file to read (empty, or only binary or over-100 KB files) is a failure, exit 1, with `error: no suitable files found in directory` and no `total`: nothing was searched, so `total: 0` would claim a search that did not happen.
 
 ## Failures
 
@@ -60,7 +60,7 @@ Every error is on stdout in the format a success would have used, and stderr sta
 - `--json`: one `{"error": true, "message": ...}` document.
 - `--plain` (or `--axi=false`): a single `Error: ...` line.
 
-This covers a failure before work starts (no API key, a bad URL, a failed `fetch`), an unknown command (which lists the commands), and an unknown flag (named in the message, with the command's valid flags in `flags[]` in TOON, exit 2, before any network or model call). On a usage error, parsing may stop before the last format flag, so the last `--plain`, `--axi` or `--json` on the command line decides the format, read the way pflag reads it. An error a result already carries is not printed twice.
+This covers a failure before work starts (no API key, a bad URL, a failed `fetch`), an unknown command (which lists the commands), and an unknown flag (named in the message, with the command's valid flags in `flags[]` in TOON, exit 2, before any network or model call). On a usage error, parsing may stop before the last format flag, so the last `--plain`, `--axi` or `--json` on the command line decides the format, read the way pflag reads it. The one exception is `--plain` (or `--axi=false`) together with `--json`: `--plain` wins whichever comes last, so that usage error is always the plain `Error: ...` line. It is deliberate: the caller asked for text, and a JSON or TOON document would give it a format it ruled out. An error a result already carries is not printed twice.
 
 ## Suggested commands in help[]
 
@@ -72,7 +72,7 @@ A `help[]` step that suggests running `extract-relevant` on a link, page URL or 
 | --- | --- |
 | 0 | Success, including a successful run that found nothing |
 | 1 | The command ran and failed: a failed fetch or model call, or a partial result |
-| 2 | The invocation itself is malformed: an unknown command or flag, a flag missing its argument, `--plain` with `--json`, or an unusable model-key configuration (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed: an unknown command or flag, a flag missing its argument, a rejected flag value (such as `fetch --format text`), the wrong number of arguments (such as `fetch` with no URL), `completion` with no shell or an unknown one, `--plain` with `--json`, or an unusable model-key configuration (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
 
 Retrying an exit 2 unchanged never helps.
 
