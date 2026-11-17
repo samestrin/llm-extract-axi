@@ -4,7 +4,7 @@
 the VHS tape beside it, `llm-extract.tape`. The GIF is a file in this
 repository: there is no hosted recording link to go stale or disappear.
 
-The session shows three commands against the release binary:
+The session shows three commands against the binary `make build` produces:
 
 | Command | What it shows |
 | --- | --- |

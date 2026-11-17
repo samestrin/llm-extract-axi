@@ -16,17 +16,13 @@ These changes will be released as version 2.0.0.
 
 - **Breaking:** TOON is now the default output, including `help[]` next steps, instead of requiring `--axi`. To migrate scripts that need the previous plain text, add `--plain`; `--axi=false` is equivalent. `--axi` remains an accepted no-op alias, `--json` still selects JSON, and `--plain --json` is a usage error (exit 2). `fetch` success still writes the raw response body unchanged, and `setup` and `completion` remain prose.
 - The MCP tools now return the CLI's default TOON output, with no extra flag or conversion layer.
+- The README H1 now names the repository, `llm-extract-axi`; command examples and the product name remain `llm-extract`.
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `4ef2b67`, the commit the `v1.1.0` tag carries; every `file:line` pointer and probe was re-checked there, and the `extract-links --axi` probe quote now names all four default fields.
+- The README's pin-a-version install example now uses `v1.1.0` instead of the stale `v1.0.1`.
 
 ### Fixed
 
 - Errors now go to stdout in the active output format in every case, including failed `fetch` calls, unknown commands and flags, and runtime failures; stderr stays empty except for diagnostics. Exit codes are unchanged. In particular, `fetch URL > file` can place an error document in the file after a failed fetch, so callers must check the exit status.
-
-### Security
-
-- An `ANTHROPIC_API_KEY` is no longer sent to OpenAI. With only that key set, the base URL stayed at the default `https://api.openai.com/v1`, so `extract-relevant` and `extract-links --context` sent the Anthropic key to the wrong vendor. Now `extract-relevant` stops before any model call with a usage error (exit 2) that names `OPENAI_BASE_URL`, and `extract-links --context` makes no model call and reports the same error beside its unranked links. Set `OPENAI_BASE_URL` to the OpenAI-compatible endpoint the key belongs to. The home view reports the problem as `api_config_error`. `OPENAI_API_KEY` alone works as before.
-
-### Fixed
-
 - `setup` hooks now quote a binary path containing a backslash for POSIX sh. An unquoted backslash is an escape in sh, so a binary at a path like `/opt/my\tools/llm-extract` produced a Claude Code or Codex hook that ran `/opt/mytools/llm-extract` and failed at every session start, and a rerun of `setup` reported it unchanged. A rerun now repairs such a hook written by an older version. The quoting is for POSIX sh only; on Windows, keep `llm-extract` on `PATH` so the hook runs it by bare name (the README states the limit).
 - `extract-links --context` now exits 2 (usage) for an unusable model-key configuration, the same as `extract-relevant`; it used to exit 1, telling an agent a retry might help when only a configuration fix can. A missing API key is now also a usage error (exit 2) in both commands, for the same reason; a failed fetch or model call still exits 1.
 - The `help[]` for a missing API key now states the pairing rule (`OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` with `OPENAI_BASE_URL`) instead of suggesting either key alone, which failed again for an Anthropic key with no endpoint. An `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL` gets its own `help[]` line naming `OPENAI_BASE_URL`, and the `extract-links` ranking-failure advice states the same pairing rule.
@@ -34,12 +30,13 @@ These changes will be released as version 2.0.0.
 - The offline benchmarks (`benchmarks/tokens`, `benchmarks/perf`) now drop prefixed model credentials such as `LLM_OPENAI_API_KEY` from the child's environment, and their test compares variable names whole, so it no longer fails on a machine that exports one.
 - `help[]` next steps under `--axi` no longer write a link, page URL or path into the suggested command on Linux and macOS. They now name the result field that holds it on every platform (`--path <links[0].href>`, `--path <url>`, `--path <path>`), as Windows already did. In v1.1.0 the value was single-quoted for a POSIX shell, but TOON escaping doubled the backslash of `'\''` on the terminal, so a command copied from the output and pasted into a shell ran what a hostile page put in the link (for example `/safe?q=';id;'` ran `id`).
 - `go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest` binaries now report the installed release with `--version` (for example `1.1.0`) instead of `dev`: when ldflags did not stamp a version, both `llm-extract` and `llm-extract-mcp` read the module version from the build info, skipping `(devel)`. A version stamped at build time still wins.
+- `fetch` with no URL or more than one now exits 2 (usage), as the exit-code table says; it exited 1, telling an agent a retry might help. So does an unsupported `fetch --format` such as `text`, like every other rejected flag value.
+- A bare `completion` or an unknown shell such as `completion bogus` is now a usage error (exit 2) that lists the shells; it printed help and exited 0, so a mistyped shell looked like success. `completion bash` and the other shells are unchanged.
+- The `extract-links --context` ranking-failure `help[]` names the key configuration only when the key is the problem: no usable key configuration, or a key the endpoint rejected (401 or 403). A model reply that is not JSON or a server error now gets advice to run again or drop `--context`, instead of sending the caller to fix a key that works.
 
-### Changed
+### Security
 
-- The README H1 now names the repository, `llm-extract-axi`; command examples and the product name remain `llm-extract`.
-- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `4ef2b67`, the commit the `v1.1.0` tag carries; every `file:line` pointer and probe was re-checked there, and the `extract-links --axi` probe quote now names all four default fields.
-- The README's pin-a-version install example now uses `v1.1.0` instead of the stale `v1.0.1`.
+- An `ANTHROPIC_API_KEY` is no longer sent to OpenAI. With only that key set, the base URL stayed at the default `https://api.openai.com/v1`, so `extract-relevant` and `extract-links --context` sent the Anthropic key to the wrong vendor. Now `extract-relevant` stops before any model call with a usage error (exit 2) that names `OPENAI_BASE_URL`, and `extract-links --context` makes no model call and reports the same error beside its unranked links. Set `OPENAI_BASE_URL` to the OpenAI-compatible endpoint the key belongs to. The home view reports the problem as `api_config_error`. `OPENAI_API_KEY` alone works as before.
 
 ## [1.1.0] - 2026-11-13
 
