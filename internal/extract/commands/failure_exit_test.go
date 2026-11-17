@@ -88,8 +88,8 @@ func TestExtractLinksFetchErrorExitsNonZero(t *testing.T) {
 	if !strings.Contains(got.Error, "404") {
 		t.Errorf("the JSON does not carry the 404: %+v", got)
 	}
-	if !strings.Contains(stderr, "404") {
-		t.Errorf("stderr does not carry the reason: %q", stderr)
+	if stderr != "" {
+		t.Errorf("the error went to stderr as well as stdout: %q", stderr)
 	}
 }
 
@@ -111,8 +111,8 @@ func TestExtractLinksRankingWithNoKeyExitsNonZeroAndKeepsLinks(t *testing.T) {
 	if *got.Total != 2 || len(got.Links) != 2 {
 		t.Errorf("the heuristic links were dropped: %+v", got)
 	}
-	if !strings.Contains(stderr, "LLM ranking failed") {
-		t.Errorf("stderr does not carry the reason: %q", stderr)
+	if stderr != "" {
+		t.Errorf("the error went to stderr as well as stdout: %q", stderr)
 	}
 }
 
@@ -152,9 +152,9 @@ func TestExtractLinksRankingFailureTextShowsErrorAndLinks(t *testing.T) {
 // failure paths are tested side by side at the exit-code level).
 func TestExtractRelevantNoKeyExitsNonZero(t *testing.T) {
 	noAPIKey(t)
-	code, _, stderr := runCLI(t, "extract-relevant", "--path", t.TempDir(), "--context", "x", "--plain")
-	if code == 0 || !strings.Contains(stderr, "API key") {
-		t.Fatalf("code=%d stderr=%q", code, stderr)
+	code, out, stderr := runCLI(t, "extract-relevant", "--path", t.TempDir(), "--context", "x", "--plain")
+	if code == 0 || !strings.Contains(out, "API key") || stderr != "" {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, out, stderr)
 	}
 }
 
@@ -173,8 +173,8 @@ func TestExtractRelevantAPIErrorExitsNonZero(t *testing.T) {
 	if !strings.Contains(got.Error, "500") {
 		t.Errorf("the JSON does not carry the 500: %+v", got)
 	}
-	if !strings.Contains(stderr, "500") {
-		t.Errorf("stderr does not carry the reason: %q", stderr)
+	if stderr != "" {
+		t.Errorf("the error went to stderr as well as stdout: %q", stderr)
 	}
 }
 

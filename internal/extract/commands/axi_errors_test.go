@@ -237,28 +237,31 @@ func TestAXIReportedResultErrorIsPrintedOnce(t *testing.T) {
 	}
 }
 
-// Defends Q1: under --plain an error stays on stderr, as "Error: " and the
-// message, with nothing on stdout -- including --axi=false, which is --plain,
-// and --json, which prints its errors as it did before TOON was the default.
-func TestPlainErrorsStayOnStderr(t *testing.T) {
+// Defends AXI principle 6 outside TOON: under --plain (and --axi=false, which
+// is --plain) an error is one "Error: " line on stdout, and under --json it is
+// one {error, message} JSON document on stdout; stderr stays empty either way.
+func TestPlainAndJSONErrorsGoToStdout(t *testing.T) {
 	url, _ := countingServer(t, http.StatusOK)
-	for _, args := range [][]string{
-		{"--plain", "fetch", "--bogus", url},
-		{"--axi=false", "fetch", "--bogus", url},
-		{"fetch", "--plain", "not-a-url"},
-		{"fetch", "--json", "--bogus", url},
-		{"fetch", "--json", "not-a-url"},
-		{"fetch", "--axi", "--json", "not-a-url"},
+	for _, tc := range []struct {
+		args []string
+		json bool
+	}{
+		{[]string{"--plain", "fetch", "--bogus", url}, false},
+		{[]string{"--axi=false", "fetch", "--bogus", url}, false},
+		{[]string{"fetch", "--plain", "not-a-url"}, false},
+		{[]string{"fetch", "--json", "--bogus", url}, true},
+		{[]string{"fetch", "--json", "not-a-url"}, true},
+		{[]string{"fetch", "--axi", "--json", "not-a-url"}, true},
 	} {
-		code, stdout, stderr := runCLI(t, args...)
+		code, stdout, stderr := runCLI(t, tc.args...)
 		if code == 0 {
-			t.Errorf("%v exited 0", args)
+			t.Errorf("%v exited 0", tc.args)
 		}
-		if stdout != "" {
-			t.Errorf("%v wrote to stdout: %q", args, stdout)
+		if stderr != "" {
+			t.Errorf("%v wrote to stderr: %q", tc.args, stderr)
 		}
-		if !strings.HasPrefix(stderr, "Error: ") || strings.Count(stderr, "\n") != 1 {
-			t.Errorf("%v: stderr is not one Error line: %q", args, stderr)
+		if !fetchError(stdout, stderr) || strings.HasPrefix(stdout, "{") != tc.json {
+			t.Errorf("%v: stdout is not one error in the asked format: %q", tc.args, stdout)
 		}
 	}
 }
@@ -266,35 +269,41 @@ func TestPlainErrorsStayOnStderr(t *testing.T) {
 // Defends the scan for the format flags on a failed parse following pflag's
 // own rules and the pre-run's: TOON unless --plain, --axi=false or --json; the
 // last occurrence of each flag wins, a value after = is parsed as a bool (an
-// unparsable one changes nothing), and nothing after "--" is a flag.
-func TestArgsWantAXI(t *testing.T) {
+// unparsable one changes nothing), and nothing after "--" is a flag. --plain
+// beats --json, so asking for both gets its usage error as text.
+func TestArgsFormat(t *testing.T) {
 	cases := []struct {
 		args []string
-		want bool
+		want outFormat
 	}{
-		{nil, true},
-		{[]string{"--axi"}, true},
-		{[]string{"--axi=true"}, true},
-		{[]string{"--axi=false"}, false},
-		{[]string{"--axi", "--axi=0"}, false},
-		{[]string{"--axi=false", "--axi"}, true},
-		{[]string{"--axi=nonsense"}, true},
-		{[]string{"--", "--axi=false"}, true},
-		{[]string{"-axi"}, true},
-		{[]string{"--plain"}, false},
-		{[]string{"--plain=true"}, false},
-		{[]string{"--plain", "--plain=false"}, true},
-		{[]string{"--plain=nonsense"}, true},
-		{[]string{"--axi", "--plain"}, false},
-		{[]string{"--plain", "--axi"}, false},
-		{[]string{"--json"}, false},
-		{[]string{"--json", "--json=false"}, true},
-		{[]string{"--axi", "--json"}, false},
-		{[]string{"--", "--plain"}, true},
+		{nil, formatTOON},
+		{[]string{"--axi"}, formatTOON},
+		{[]string{"--axi=true"}, formatTOON},
+		{[]string{"--axi=false"}, formatPlain},
+		{[]string{"--axi", "--axi=0"}, formatPlain},
+		{[]string{"--axi=false", "--axi"}, formatTOON},
+		{[]string{"--axi=nonsense"}, formatTOON},
+		{[]string{"--", "--axi=false"}, formatTOON},
+		{[]string{"-axi"}, formatTOON},
+		{[]string{"--plain"}, formatPlain},
+		{[]string{"--plain=true"}, formatPlain},
+		{[]string{"--plain", "--plain=false"}, formatTOON},
+		{[]string{"--plain=nonsense"}, formatTOON},
+		{[]string{"--axi", "--plain"}, formatPlain},
+		{[]string{"--plain", "--axi"}, formatPlain},
+		{[]string{"--json"}, formatJSON},
+		{[]string{"--json=true"}, formatJSON},
+		{[]string{"--json", "--json=false"}, formatTOON},
+		{[]string{"--axi", "--json"}, formatJSON},
+		{[]string{"--json", "--plain"}, formatPlain},
+		{[]string{"--plain", "--json"}, formatPlain},
+		{[]string{"--axi=false", "--json"}, formatPlain},
+		{[]string{"--", "--json"}, formatTOON},
+		{[]string{"--", "--plain"}, formatTOON},
 	}
 	for _, tc := range cases {
-		if got := argsWantAXI(RootCmd, tc.args); got != tc.want {
-			t.Errorf("argsWantAXI(%q) = %v, want %v", tc.args, got, tc.want)
+		if got := argsFormat(RootCmd, tc.args); got != tc.want {
+			t.Errorf("argsFormat(%q) = %v, want %v", tc.args, got, tc.want)
 		}
 	}
 }

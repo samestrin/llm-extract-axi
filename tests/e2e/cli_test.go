@@ -72,7 +72,8 @@ func TestCLIUnknownCommandExitsNonZero(t *testing.T) {
 }
 
 // Defends the exit code of `fetch` across the process boundary: a challenge
-// page must exit non-zero from the real binary and print nothing on stdout.
+// page must exit non-zero from the real binary, with the error, never the
+// page, on stdout and stderr empty.
 func TestCLIFetchChallengeExitsNonZero(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -86,7 +87,7 @@ func TestCLIFetchChallengeExitsNonZero(t *testing.T) {
 	if err := cmd.Run(); err == nil {
 		t.Fatalf("challenge page exited 0; stdout=%q", stdout.String())
 	}
-	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "needs a browser") {
+	if !strings.HasPrefix(stdout.String(), "Error: ") || !strings.Contains(stdout.String(), "needs a browser") || stderr.Len() != 0 {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
@@ -106,7 +107,8 @@ func llmEnv(extra ...string) []string {
 }
 
 // Defends the exit code of `extract-links` across the process boundary: a 404
-// page must exit non-zero from the real binary, with the reason on stderr.
+// page must exit non-zero from the real binary, with the reason on stdout and
+// stderr empty.
 func TestCLIExtractLinksFetchErrorExitsNonZero(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -119,7 +121,7 @@ func TestCLIExtractLinksFetchErrorExitsNonZero(t *testing.T) {
 	if err := cmd.Run(); err == nil {
 		t.Fatalf("a 404 exited 0; stdout=%q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "404") || !strings.Contains(stderr.String(), "404") {
+	if !strings.Contains(stdout.String(), "404") || stderr.Len() != 0 {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
@@ -139,7 +141,7 @@ func TestCLIExtractLinksRankingFailureExitsNonZeroAndKeepsLinks(t *testing.T) {
 	if err := cmd.Run(); err == nil {
 		t.Fatalf("ranking with no API key exited 0; stdout=%q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "/start") || !strings.Contains(stderr.String(), "LLM ranking failed") {
+	if !strings.Contains(stdout.String(), "/start") || !strings.Contains(stdout.String(), "LLM ranking failed") || stderr.Len() != 0 {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
@@ -164,7 +166,7 @@ func TestCLIExtractRelevantModelErrorExitsNonZero(t *testing.T) {
 	if err := cmd.Run(); err == nil {
 		t.Fatalf("a model 401 exited 0; stdout=%q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "ERROR:") || !strings.Contains(stderr.String(), "401") {
+	if !strings.Contains(stdout.String(), "ERROR:") || !strings.Contains(stdout.String(), "401") || stderr.Len() != 0 {
 		t.Errorf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

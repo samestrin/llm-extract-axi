@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// runFetchCmd runs fetch under --plain, where an error is text on stderr,
-// unless the test asks for --json, which --plain refuses. A successful fetch
+// runFetchCmd runs fetch under --plain, where an error is an Error line on
+// stdout, unless the test asks for --json, which --plain refuses. A successful fetch
 // prints the same bytes in every mode (TestOutputModeMatrix); the default's
 // TOON error is pinned in axi_errors_test.go.
 func runFetchCmd(t *testing.T, args ...string) (int, string, string) {
@@ -25,6 +25,20 @@ func runFetchCmd(t *testing.T, args ...string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	code := run(append([]string{"fetch"}, args...), &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
+}
+
+// fetchError reports whether a failed fetch printed only its error: one Error
+// line, or one JSON error document under --json, on stdout, and nothing on
+// stderr. A body or a partial payload on stdout is not an error.
+func fetchError(out, errOut string) bool {
+	if errOut != "" {
+		return false
+	}
+	if strings.HasPrefix(out, "Error: ") && strings.Count(out, "\n") == 1 {
+		return true
+	}
+	var doc map[string]any
+	return json.Unmarshal([]byte(out), &doc) == nil && doc["error"] == true && len(doc) == 2
 }
 
 func pageServer(t *testing.T, status int, body string) *httptest.Server {
@@ -47,15 +61,15 @@ func TestFetchCmdWritesBody(t *testing.T) {
 	}
 }
 
-// Defends the core rule: a challenge page exits non-zero, says a browser is
-// needed on stderr, and writes nothing to stdout.
+// Defends the core rule: a challenge page exits non-zero and says a browser is
+// needed, and stdout holds that error, never the challenge page.
 func TestFetchCmdChallengeIsError(t *testing.T) {
 	srv := pageServer(t, 403, "<title>Just a moment...</title>")
 	code, out, errOut := runFetchCmd(t, srv.URL)
 	if code == 0 {
 		t.Fatalf("challenge exited 0; out=%q", out)
 	}
-	if !strings.Contains(errOut, "needs a browser") || out != "" {
+	if !strings.Contains(out, "needs a browser") || !fetchError(out, errOut) {
 		t.Errorf("err=%q out=%q", errOut, out)
 	}
 }
@@ -69,11 +83,11 @@ func TestFetchCmdFailuresAreErrors(t *testing.T) {
 	dead.Close()
 	for _, args := range [][]string{{srv404.URL}, {srv404.URL, "--json"}, {deadURL}, {deadURL, "--json"}} {
 		code, out, errOut := runFetchCmd(t, args...)
-		if code == 0 || out != "" || errOut == "" {
+		if code == 0 || !fetchError(out, errOut) {
 			t.Errorf("%v: code=%d out=%q err=%q", args, code, out, errOut)
 		}
 	}
-	if _, _, e := runFetchCmd(t, srv404.URL); !strings.Contains(e, "404") {
+	if _, e, _ := runFetchCmd(t, srv404.URL); !strings.Contains(e, "404") {
 		t.Errorf("error does not name the status: %q", e)
 	}
 }
@@ -109,8 +123,8 @@ func TestFetchCmdOutputFile(t *testing.T) {
 // Defends an unwritable --output being an error, not a silent success.
 func TestFetchCmdOutputUnwritable(t *testing.T) {
 	srv := pageServer(t, 200, "x")
-	code, _, errOut := runFetchCmd(t, srv.URL, "--output", filepath.Join(t.TempDir(), "no", "dir", "f"))
-	if code == 0 || !strings.Contains(errOut, "write") {
+	code, out, errOut := runFetchCmd(t, srv.URL, "--output", filepath.Join(t.TempDir(), "no", "dir", "f"))
+	if code == 0 || !strings.Contains(out, "write") || !fetchError(out, errOut) {
 		t.Errorf("code=%d err=%q", code, errOut)
 	}
 }
@@ -144,7 +158,7 @@ func TestFetchCmdRejectsBadInput(t *testing.T) {
 		{},
 	} {
 		code, out, errOut := runFetchCmd(t, args...)
-		if code == 0 || out != "" || errOut == "" {
+		if code == 0 || !fetchError(out, errOut) {
 			t.Errorf("%v: code=%d out=%q err=%q", args, code, out, errOut)
 		}
 	}
@@ -175,19 +189,19 @@ func TestFetchCmdNegativeRetries(t *testing.T) {
 }
 
 // Defends the --max-bytes flag end to end: a body over the cap exits non-zero,
-// names the cap, prints nothing to stdout, and writes no --output file. It is
+// names the cap, prints only the error on stdout, and writes no --output file. It is
 // an error, never a truncated success saved to disk.
 func TestFetchCmdMaxBytesOverCapIsError(t *testing.T) {
 	srv := pageServer(t, 200, strings.Repeat("x", 200))
 	code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "100")
-	if code == 0 || out != "" {
-		t.Fatalf("over-cap exited %d with out=%q", code, out)
+	if code == 0 || !fetchError(out, errOut) {
+		t.Fatalf("over-cap exited %d with out=%q err=%q", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "cap") || !strings.Contains(errOut, "100") {
-		t.Errorf("error does not name the size cap: %q", errOut)
+	if !strings.Contains(out, "cap") || !strings.Contains(out, "100") {
+		t.Errorf("error does not name the size cap: %q", out)
 	}
-	// --json must not emit a partial payload either.
-	if code, out, _ := runFetchCmd(t, srv.URL, "--max-bytes", "100", "--json"); code == 0 || out != "" {
+	// --json must not emit a partial payload either, only the error.
+	if code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "100", "--json"); code == 0 || !fetchError(out, errOut) {
 		t.Errorf("--json over-cap produced output: code=%d out=%q", code, out)
 	}
 	// --output must leave no file behind.
@@ -217,7 +231,7 @@ func TestFetchCmdMaxBytesEnvOverride(t *testing.T) {
 	srv := pageServer(t, 200, strings.Repeat("z", 150))
 	t.Setenv("FETCH_MAX_BYTES", "100")
 	code, out, errOut := runFetchCmd(t, srv.URL)
-	if code == 0 || out != "" || !strings.Contains(errOut, "cap") {
+	if code == 0 || !fetchError(out, errOut) || !strings.Contains(out, "cap") {
 		t.Errorf("env cap not applied: code=%d out=%q err=%q", code, out, errOut)
 	}
 	// The flag beats the env: --max-bytes 500 fetches the same page.

@@ -16,18 +16,19 @@ import (
 )
 
 // Defends the exit-code contract: an unknown command must exit non-zero and
-// say why (on stderr under --plain), never exit 0 with nothing printed.
+// say why (on stdout under --plain, stderr empty), never exit 0 with nothing
+// printed.
 func TestRunUnknownCommandFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"no-such-command", "--plain"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("unknown command exited 0; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "no-such-command") {
-		t.Errorf("stderr does not name the bad command: %q", stderr.String())
+	if !strings.Contains(stdout.String(), "no-such-command") {
+		t.Errorf("stdout does not name the bad command: %q", stdout.String())
 	}
-	if stdout.Len() != 0 {
-		t.Errorf("an error wrote to stdout: %q", stdout.String())
+	if stderr.Len() != 0 {
+		t.Errorf("an error wrote to stderr: %q", stderr.String())
 	}
 }
 
@@ -55,10 +56,10 @@ func TestRunExitCodeSeparatesUsageFromFailure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if code := run(tc.args, &stdout, &stderr); code != tc.want {
-				t.Fatalf("exit %d, want %d; stderr=%q", code, tc.want, stderr.String())
+				t.Fatalf("exit %d, want %d; stdout=%q", code, tc.want, stdout.String())
 			}
-			if !strings.HasPrefix(stderr.String(), "Error: ") {
-				t.Errorf("stderr does not carry the error: %q", stderr.String())
+			if !strings.HasPrefix(stdout.String(), "Error: ") || stderr.Len() != 0 {
+				t.Errorf("stdout does not carry the error alone: stdout=%q stderr=%q", stdout.String(), stderr.String())
 			}
 		})
 	}

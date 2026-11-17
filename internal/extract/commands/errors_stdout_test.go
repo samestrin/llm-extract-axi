@@ -10,14 +10,14 @@ import (
 )
 
 // errorFormat is one output format and how to read an error printed in it.
-type errorFormat struct {
+type stdoutFormat struct {
 	name string
 	flag string // "" is the default, TOON
 	// check fails the test unless stdout is one error in this format.
 	check func(t *testing.T, stdout string)
 }
 
-var errorFormats = []errorFormat{
+var stdoutFormats = []stdoutFormat{
 	{"toon", "", func(t *testing.T, stdout string) { axiError(t, stdout) }},
 	{"toon --axi", "--axi", func(t *testing.T, stdout string) { axiError(t, stdout) }},
 	{"json", "--json", func(t *testing.T, stdout string) {
@@ -48,7 +48,7 @@ var errorFormats = []errorFormat{
 // move: 2 for a malformed invocation, 1 for a command that ran and failed.
 func TestErrorsGoToStdoutInEveryFormat(t *testing.T) {
 	failing, _ := countingServer(t, http.StatusInternalServerError)
-	for _, f := range errorFormats {
+	for _, f := range stdoutFormats {
 		// around puts the format flag between before and after.
 		around := func(before []string, after ...string) []string {
 			args := append([]string{}, before...)
@@ -70,6 +70,9 @@ func TestErrorsGoToStdoutInEveryFormat(t *testing.T) {
 			{"unknown command", withFlag("nosuch"), int(goaxi.ExitUsage)},
 			{"runtime error", withFlag("extract-links", "--url", "not-a-url"), int(goaxi.ExitError)},
 			{"failed fetch", withFlag("fetch", failing, "--retries", "0"), int(goaxi.ExitError)},
+			// cobra checks the argument count before the pre-run publishes
+			// the format, so the format must come from the parsed flags.
+			{"missing argument", withFlag("fetch"), int(goaxi.ExitError)},
 		}
 		for _, c := range cases {
 			t.Run(f.name+"/"+c.name, func(t *testing.T) {
