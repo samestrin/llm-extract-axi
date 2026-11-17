@@ -61,7 +61,9 @@ Run ` + "`llm-extract`" + ` with no arguments to see where the binary is and whi
 - ` + "`llm-extract extract-links --url <url> [--context <text>]`" + ` lists and ranks links. Network; a model only with --context.
 - ` + "`llm-extract extract-relevant --path <file|dir|url> --context <text>`" + ` reduces content to what the context needs. Always a model; network only for a URL.
 
-A failed fetch or model call exits non-zero with the reason on stderr. Treat that as a failure, never as an empty result.
+Output is TOON by default; ` + "`--plain`" + ` prints human-readable text.
+
+A failed fetch or model call exits non-zero with the reason on stdout in the active output format. Treat that as a failure, never as an empty result.
 `
 
 func newSetupCmd() *cobra.Command {
