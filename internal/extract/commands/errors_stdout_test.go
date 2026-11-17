@@ -68,7 +68,8 @@ func TestErrorsGoToStdoutInEveryFormat(t *testing.T) {
 			{"unknown flag before", withFlag("extract-links", "--bogus"), int(goaxi.ExitUsage)},
 			{"unknown flag after", around([]string{"extract-links"}, "--bogus"), int(goaxi.ExitUsage)},
 			{"unknown command", withFlag("nosuch"), int(goaxi.ExitUsage)},
-			{"runtime error", withFlag("extract-links", "--url", "not-a-url"), int(goaxi.ExitError)},
+			// A bad URL is a rejected value, exit 2 (EST-6950).
+			{"bad URL", withFlag("extract-links", "--url", "not-a-url"), int(goaxi.ExitUsage)},
 			{"failed fetch", withFlag("fetch", failing, "--retries", "0"), int(goaxi.ExitError)},
 			// cobra checks the argument count before the pre-run publishes
 			// the format, so the format must come from the flags as given.

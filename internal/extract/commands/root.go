@@ -303,8 +303,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// errInvalidURL is the error for a URL that is not http or https.
-var errInvalidURL = errors.New("invalid URL: must start with http:// or https://")
+// errInvalidURL is the error for a URL that is not http or https. It is a
+// rejected argument value, so it exits 2: the same invocation never succeeds.
+var errInvalidURL = output.UsageError(errors.New("invalid URL: must start with http:// or https://"))
 
 // reportedError is an error a command has already printed as part of its
 // result. It still sets the exit code, and run() does not print it again.
@@ -441,14 +442,16 @@ func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
 		help = []string{"Set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL, then run the command again", usage}
 	case errors.Is(err, llmapi.ErrBaseURLRequired):
 		help = []string{"Set OPENAI_BASE_URL to the OpenAI-compatible endpoint the ANTHROPIC_API_KEY belongs to, or set OPENAI_API_KEY instead, then run the command again", usage}
+	// A bad URL is a usage error too, and its advice is more specific than
+	// the generic list of flags.
+	case errors.Is(err, errInvalidURL):
+		help = []string{"Pass a URL that starts with http:// or https://", usage}
 	case code == int(goaxi.ExitUsage):
 		doc["flags"] = flagNames(cmd)
 		if cmd.HasAvailableSubCommands() {
 			doc["commands"] = commandNames(cmd)
 		}
 		help = []string{usage}
-	case errors.Is(err, errInvalidURL):
-		help = []string{"Pass a URL that starts with http:// or https://", usage}
 	default:
 		help = []string{usage}
 	}

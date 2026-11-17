@@ -10,7 +10,7 @@ llm-extract-axi is a single Go binary that gives an AI agent, or you, commands t
 
 <img src="docs/demo/llm-extract.gif" alt="llm-extract demo session" width="800">
 
-A real session, recorded from [`docs/demo/llm-extract.tape`](docs/demo/llm-extract.tape) with VHS and committed as a GIF in this repository. It shows `llm-extract --version`, `extract-links --axi` and `extract-links --fields href,score` against the fixture served on `127.0.0.1`. [`docs/demo/README.md`](docs/demo/README.md) gives the render command.
+A real session, recorded from [`docs/demo/llm-extract.tape`](docs/demo/llm-extract.tape) with VHS and committed as a GIF in this repository. It shows `llm-extract --version`, `extract-links --axi` and `extract-links --fields href,score --plain` against the fixture served on `127.0.0.1`. [`docs/demo/README.md`](docs/demo/README.md) gives the render command.
 
 ## Why
 
@@ -154,7 +154,7 @@ Output modes: TOON by default, `--plain` for human-readable text, `--json` for s
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a rejected flag value such as `fetch --format text`, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a rejected flag value such as `fetch --format text` or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
 

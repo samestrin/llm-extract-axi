@@ -175,7 +175,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	// Validate context is provided
 	if extractRelevantContext == "" {
-		return fmt.Errorf("--context is required")
+		return output.UsageError(fmt.Errorf("--context is required"))
 	}
 
 	// Load API configuration
