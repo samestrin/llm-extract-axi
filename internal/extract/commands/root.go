@@ -3,6 +3,7 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -279,17 +280,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	code := output.ExitCodeFor(err)
-	if !wantAXI(cmd, args, code) {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return code
-	}
-	// Under TOON the error is on stdout in TOON, the encoding a success would
-	// have used, so a caller reading one stream learns that the command failed
-	// and what to do next. A result that already carries its error is not
+	// The error is on stdout in the encoding a success would have used, so a
+	// caller reading one stream learns that the command failed and why; stderr
+	// is left for diagnostics. A result that already carries its error is not
 	// printed twice: two documents would not decode as one.
 	var reported reportedError
-	if !errors.As(err, &reported) {
+	if errors.As(err, &reported) {
+		return code
+	}
+	switch errorFormat(cmd, args, code) {
+	case formatTOON:
 		_ = output.EncodeAXI(stdout, axiErrorDoc(cmd, err, code))
+	case formatJSON:
+		// The {error, message} shape of Formatter.PrintError, built here
+		// because PrintError's writer is the command's, not run()'s.
+		doc, _ := json.MarshalIndent(map[string]any{"error": true, "message": err.Error()}, "", "  ")
+		_, _ = fmt.Fprintln(stdout, string(doc))
+	default:
+		_, _ = fmt.Fprintf(stdout, "Error: %v\n", err)
 	}
 	return code
 }
@@ -298,30 +306,49 @@ func run(args []string, stdout, stderr io.Writer) int {
 var errInvalidURL = errors.New("invalid URL: must start with http:// or https://")
 
 // reportedError is an error a command has already printed as part of its
-// result. It still sets the exit code; under TOON it is not printed again.
+// result. It still sets the exit code, and run() does not print it again.
 type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
 
-// wantAXI reports whether this run's error is printed as TOON. On a malformed
-// invocation parsing may have stopped before the last format flag, so the
-// parsed flags can be stale and the arguments are scanned instead, last
-// occurrence winning. Otherwise the parsed flags are the answer.
-func wantAXI(cmd *cobra.Command, args []string, code int) bool {
+// outFormat is the encoding a run prints in.
+type outFormat int
+
+const (
+	formatTOON outFormat = iota
+	formatJSON
+	formatPlain
+)
+
+// errorFormat returns the encoding this run's error is printed in. On a
+// malformed invocation parsing may have stopped before the last format flag,
+// so the parsed flags can be stale and the arguments are scanned instead, last
+// occurrence winning. Otherwise the parsed flags are the answer, read here
+// rather than from GlobalAXIOutput: cobra checks the argument count before the
+// pre-run publishes it.
+func errorFormat(cmd *cobra.Command, args []string, code int) outFormat {
 	if code == int(goaxi.ExitUsage) {
-		return argsWantAXI(cmd, args)
+		return argsFormat(cmd, args)
 	}
-	return GlobalAXIOutput
+	if plainOutput || !axiOutput {
+		return formatPlain
+	}
+	if f := cmd.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
+		return formatJSON
+	}
+	return formatTOON
 }
 
-// argsWantAXI scans args for the format flags the way pflag would read them
+// argsFormat scans args for the format flags the way pflag would read them
 // and applies the pre-run's rule: TOON unless --plain, --axi=false or --json.
+// --plain wins over --json, so the usage error for asking for both is text.
 // The last occurrence of each flag wins, a value after = is a bool, nothing
 // after "--" is a flag, and the argument after a flag that takes a value is
 // that value, not a flag, so `--url --plain` leaves --plain off. cmd is the
 // command the run reached; its flags, own and inherited, say which ones take a
-// value.
-func argsWantAXI(cmd *cobra.Command, args []string) bool {
+// value. --json is read wherever it appears, even on a command that lacks it:
+// the caller asked for JSON, and an unknown --json is still a JSON caller.
+func argsFormat(cmd *cobra.Command, args []string) outFormat {
 	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
 	lookup := func(name string) *pflag.Flag {
 		if f := cmd.Flags().Lookup(name); f != nil {
@@ -385,7 +412,13 @@ scan:
 			}
 		}
 	}
-	return !plain && axi && !jsonOut
+	switch {
+	case plain || !axi:
+		return formatPlain
+	case jsonOut:
+		return formatJSON
+	}
+	return formatTOON
 }
 
 // axiErrorDoc builds the TOON error for err: the {error, message} shape of
