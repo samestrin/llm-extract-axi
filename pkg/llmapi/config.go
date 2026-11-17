@@ -43,7 +43,10 @@ func GetAPIConfig() *APIConfig {
 
 // ErrAPIKeyRequired is what Validate returns when no key is set, so a caller
 // can tell a missing key from any other failure without matching its text.
-var ErrAPIKeyRequired = errors.New("API key is required: set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL")
+// Like ErrBaseURLRequired it is a usage error (exit 2): the caller must fix
+// the configuration before a retry can succeed, so retrying unchanged never
+// helps and exit 1 would wrongly suggest it might.
+var ErrAPIKeyRequired error = usageError{errors.New("API key is required: set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL")}
 
 // usageError marks a configuration error the caller must fix before a retry
 // can succeed. output.ExitCodeFor reads UsageError and exits 2.

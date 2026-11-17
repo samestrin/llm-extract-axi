@@ -91,7 +91,10 @@ func TestAXIErrorsGoToStdoutAsTOON(t *testing.T) {
 		message string
 		help    string
 	}{
-		{"no API key", []string{"extract-relevant", "--context", "x", "--axi"}, 1, "API key", "OPENAI_API_KEY"},
+		// A missing key is a configuration error the caller must fix before a
+		// retry can succeed, so it is a usage error (exit 2), same as an
+		// Anthropic key with no OPENAI_BASE_URL (EST-6628 F3).
+		{"no API key", []string{"extract-relevant", "--context", "x", "--axi"}, 2, "API key", "OPENAI_API_KEY"},
 		{"fetch bad URL", []string{"fetch", "not-a-url", "--axi"}, 1, "invalid URL", "http://"},
 		{"extract-links bad URL", []string{"extract-links", "--url", "ftp://x", "--axi"}, 1, "invalid URL", "http://"},
 		{"failed fetch", []string{"fetch", down, "--axi"}, 1, "500", "fetch --help"},

@@ -171,10 +171,14 @@ func hookBinary() (string, error) {
 	return exe, nil
 }
 
-// shellQuote single-quotes s unless every byte is safe unquoted.
+// shellQuote single-quotes s unless every byte is safe unquoted. A
+// backslash is not safe: unquoted, POSIX sh reads it as an escape, so a hook
+// naming /opt/my\tools/llm-extract would run /opt/mytools/llm-extract and
+// fail at every session start. The quoting is for POSIX sh only; cmd.exe
+// and PowerShell are not supported (the README states the limit).
 func shellQuote(s string) string {
 	safe := func(r rune) bool {
-		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_-./:\\", r)
+		return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("_-./:", r)
 	}
 	if strings.IndexFunc(s, func(r rune) bool { return !safe(r) }) < 0 {
 		return s

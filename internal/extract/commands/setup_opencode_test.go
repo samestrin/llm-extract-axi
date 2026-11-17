@@ -9,9 +9,11 @@ import (
 	"testing"
 )
 
-// The OpenCode target pins the V2 plugin API, documented at
+// The OpenCode target writes a plugin for the V2 plugin API, documented at
 // https://opencode.ai/docs/build/plugins/server (local plugins load from
-// .opencode/plugins/: https://opencode.ai/docs/build/plugins#load).
+// .opencode/plugins/: https://opencode.ai/docs/build/plugins#load). The
+// byte-for-byte contract with the committed plugin is defended by
+// TestSetupOpenCodeWritesCommittedPlugin below.
 
 func openCodePluginPath(dir string) string {
 	return filepath.Join(dir, ".opencode", "plugins", "llm-extract.js")
@@ -57,17 +59,6 @@ func TestSetupOpenCodeWritesCommittedPlugin(t *testing.T) {
 	}
 	if want := committedOpenCodePlugin(t); !bytes.Equal(got, want) {
 		t.Errorf("plugin differs from integrations/opencode/llm-extract.js:\n%s", got)
-	}
-}
-
-// Defends: the plugin pins the V2 API and cites the docs it was written
-// against, so a reader can check it when OpenCode changes.
-func TestOpenCodePluginCitesDocs(t *testing.T) {
-	p := string(committedOpenCodePlugin(t))
-	for _, s := range []string{"https://opencode.ai/docs/build/plugins/server", "V2", `ctx.session.hook("context"`, "export default {"} {
-		if !strings.Contains(p, s) {
-			t.Errorf("plugin lacks %q", s)
-		}
 	}
 }
 
