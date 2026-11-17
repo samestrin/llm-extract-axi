@@ -201,3 +201,29 @@ func TestPlainExtractRelevantOutputFileStillPrintsSummary(t *testing.T) {
 		t.Errorf("the output file lost the extraction: %v %q", err, written)
 	}
 }
+
+// Defends a failed -o run under --json: the result printed on stdout already
+// carries the error, so run() must not append a second JSON error document.
+// Two documents on one stream decode as neither.
+func TestJSONExtractRelevantOutputFileFailureIsOneJSONDocument(t *testing.T) {
+	failingLLM(t, 500)
+	src := filepath.Join(t.TempDir(), "doc.md")
+	if err := os.WriteFile(src, []byte("body\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "out.md")
+	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "-o", dst, "--json")
+	if code != 1 {
+		t.Errorf("exit %d, want 1:\n%s", code, stdout)
+	}
+	if stderr != "" {
+		t.Errorf("stderr is not empty: %q", stderr)
+	}
+	var doc ExtractRelevantResult
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, stdout)
+	}
+	if !strings.Contains(doc.Error, "500") {
+		t.Errorf("the JSON does not carry the 500:\n%s", stdout)
+	}
+}

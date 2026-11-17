@@ -245,11 +245,11 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 	// The output already carries the error; returning it as well is what makes
 	// the exit code non-zero. Only a result printed on stdout counts as
-	// reported: with -o the error went to the file, and under --axi the -o
-	// branch prints nothing on a failure, so run() prints the error document.
+	// reported: --json prints it even with -o, but otherwise -o sends it to
+	// the file, so run() prints the error (under --axi the -o branch is silent).
 	if result.Error != "" {
 		err := errors.New(result.Error)
-		if extractRelevantOutput == "" {
+		if extractRelevantOutput == "" || extractRelevantJSON {
 			return reportedError{err}
 		}
 		return err

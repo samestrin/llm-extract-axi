@@ -159,9 +159,9 @@ func probeAPIKey(t *testing.T, name, value string) {
 	t.Setenv("OPENAI_BASE_URL", srv.URL)
 	t.Setenv("OPENAI_MODEL", "probe-model")
 
-	code, _, stderr := extractOneFile(t)
-	if code == 0 || !strings.Contains(stderr, "API key") {
-		t.Fatalf("with no key set the run exited %d, want a failure naming the API key: %q", code, stderr)
+	code, out, stderr := extractOneFile(t)
+	if code == 0 || !strings.Contains(out, "API key") || stderr != "" {
+		t.Fatalf("with no key set the run exited %d, want a failure naming the API key on stdout: %q %q", code, out, stderr)
 	}
 	if n := calls.Load(); n != 0 {
 		t.Fatalf("the run reached the model %d times with no key set", n)
@@ -231,7 +231,7 @@ func probeFetchMaxBytes(t *testing.T) {
 
 	t.Setenv("FETCH_MAX_BYTES", "16")
 	code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain")
-	if code == 0 || !strings.Contains(stderr, "size cap") {
+	if code == 0 || !strings.Contains(out, "size cap") || stderr != "" {
 		t.Errorf("a body over FETCH_MAX_BYTES=16 exited %d, want a size-cap error: %s %s", code, out, stderr)
 	}
 
@@ -255,7 +255,7 @@ func probeFetchTimeout(t *testing.T) {
 
 	t.Setenv("FETCH_TIMEOUT", "1")
 	code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain")
-	if code == 0 || stderr == "" {
+	if code == 0 || !strings.HasPrefix(out, "Error: ") || stderr != "" {
 		t.Errorf("a page slower than FETCH_TIMEOUT=1 exited %d, want a timeout error: %s %s", code, out, stderr)
 	}
 

@@ -67,7 +67,7 @@ func TestHelpCommandLeavesUntrustedValueOut(t *testing.T) {
 func TestUsageErrorHonoursLastAXIOccurrence(t *testing.T) {
 	axiOffAfter(t)
 	code, stdout, stderr := runCLI(t, "extract-links", "--axi", "--bogus", "--axi=false")
-	if code != 2 || stdout != "" || !strings.HasPrefix(stderr, "Error: ") {
+	if code != 2 || stderr != "" || !strings.HasPrefix(stdout, "Error: ") {
 		t.Errorf("--axi --bogus --axi=false: want the plain error, got exit %d stdout %q stderr %q", code, stdout, stderr)
 	}
 	code, stdout, stderr = runCLI(t, "extract-links", "--axi=false", "--bogus", "--axi")

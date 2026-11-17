@@ -46,18 +46,22 @@ func TestRunValueFlagSwallowsAXI(t *testing.T) {
 		axiError(t, stdout)
 	}
 	// A value given with = consumes nothing, so a following --plain still
-	// counts, and so does --json, which keeps its errors on stderr.
-	for _, args := range [][]string{
-		{"extract-links", "--url=http://x", "--plain", "--bogus"},
-		{"extract-links", "--json", "--axi", "--bogus"},
-		{"extract-relevant", "-ofile", "--plain", "--bogus"},
+	// counts, and so does --json: the error leaves TOON for text or JSON, on
+	// stdout either way.
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"extract-links", "--url=http://x", "--plain", "--bogus"}, "Error: "},
+		{[]string{"extract-links", "--json", "--axi", "--bogus"}, "{"},
+		{[]string{"extract-relevant", "-ofile", "--plain", "--bogus"}, "Error: "},
 	} {
-		code, stdout, stderr := runCLI(t, args...)
+		code, stdout, stderr := runCLI(t, tc.args...)
 		if code != 2 {
-			t.Errorf("%v: exit %d, want 2", args, code)
+			t.Errorf("%v: exit %d, want 2", tc.args, code)
 		}
-		if stdout != "" || !strings.HasPrefix(stderr, "Error: ") {
-			t.Errorf("%v: want the text error on stderr, got stdout %q stderr %q", args, stdout, stderr)
+		if stderr != "" || !strings.HasPrefix(stdout, tc.want) {
+			t.Errorf("%v: want the error on stdout starting %q, got stdout %q stderr %q", tc.args, tc.want, stdout, stderr)
 		}
 	}
 }
