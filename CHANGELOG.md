@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-11-13
+
+### Added
+
+- `setup --target` selects the integrations to install (`claude`, `codex` or `opencode`; repeatable). With no flag, `setup` now installs all three: the existing Claude Code hook and skill, a Codex `SessionStart` hook, and an OpenCode V2 plugin. All targets are idempotent and repair their launch command after the binary moves; `--dry-run` still writes nothing.
+
+### Changed
+
+- **Breaking:** TOON is now the default output, including `help[]` next steps, instead of requiring `--axi`. To migrate scripts that need the previous plain text, add `--plain`; `--axi=false` is equivalent. `--axi` remains an accepted no-op alias, `--json` still selects JSON, and `--plain --json` is a usage error (exit 2). `fetch` success still writes the raw response body unchanged, and `setup` and `completion` remain prose.
+- The MCP tools now return the CLI's default TOON output, with no extra flag or conversion layer.
+
+### Fixed
+
+- Errors now go to stdout in the active output format in every case, including failed `fetch` calls, unknown commands and flags, and runtime failures; stderr stays empty except for diagnostics. Exit codes are unchanged. In particular, `fetch URL > file` can place an error document in the file after a failed fetch, so callers must check the exit status.
+
 ## [Unreleased]
 
 ### Security
