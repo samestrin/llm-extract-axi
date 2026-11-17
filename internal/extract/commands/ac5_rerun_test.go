@@ -54,13 +54,14 @@ func TestDocsStateTheFormatPrecedence(t *testing.T) {
 	if code != 2 || doc["error"] != true {
 		t.Fatalf("--url --axi --bogus: exit %d, want 2 and a TOON error; the probe, not the docs, is wrong:\n%s", code, s)
 	}
-	for _, path := range []string{"README.md", "docs/output.md", "docs/axi-audit.md"} {
+	for _, path := range []string{"README.md", "docs/output.md", "docs/axi-audit.md", "docs/axi-catalog-entry.yaml"} {
 		d := readRepoFile(t, path)
 		for _, stale := range []string{
 			"the last `--plain`, `--axi` or `--json` on the command line decides",
 			"the last `--axi`, `--plain` or `--json` wins",
 			"is the last `--plain`, `--axi` or `--json`",
 			"`--url --axi --bogus` prints the plain error",
+			"the last --plain, --axi or --json on the command line decides",
 		} {
 			if strings.Contains(d, stale) {
 				t.Errorf("%s claims %q, which the binary contradicts", path, stale)
