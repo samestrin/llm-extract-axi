@@ -432,11 +432,17 @@ func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
 	case strings.Contains(err.Error(), "unknown command "):
 		doc["commands"] = commandNames(cmd)
 		help = []string{"Run '" + cmd.CommandPath() + " --help' to see the commands"}
+	// The key-configuration cases come before the generic usage case: they
+	// are usage errors themselves (exit 2), and the generic line would
+	// swallow their specific advice. The advice states the pairing rule, so
+	// following it cannot fail again with ErrBaseURLRequired.
+	case errors.Is(err, llmapi.ErrAPIKeyRequired):
+		help = []string{"Set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL, then run the command again", usage}
+	case errors.Is(err, llmapi.ErrBaseURLRequired):
+		help = []string{"Set OPENAI_BASE_URL to the OpenAI-compatible endpoint the ANTHROPIC_API_KEY belongs to, or set OPENAI_API_KEY instead, then run the command again", usage}
 	case code == int(goaxi.ExitUsage):
 		doc["flags"] = flagNames(cmd)
 		help = []string{usage}
-	case errors.Is(err, llmapi.ErrAPIKeyRequired):
-		help = []string{"Set OPENAI_API_KEY or ANTHROPIC_API_KEY, then run the command again", usage}
 	case errors.Is(err, errInvalidURL):
 		help = []string{"Pass a URL that starts with http:// or https://", usage}
 	default:
