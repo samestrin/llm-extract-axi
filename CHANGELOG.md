@@ -6,7 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-These changes will be released as version 2.0.0.
+## [2.0.0] - 2026-11-17
+
+### Breaking
+
+- TOON is now the default output, including `help[]` next steps, instead of requiring `--axi`. To migrate scripts that need the previous plain text, add `--plain`; `--axi=false` is equivalent. `--axi` remains an accepted no-op alias, `--json` still selects JSON, and `--plain --json` is a usage error (exit 2). `fetch` success still writes the raw response body unchanged, and `setup` and `completion` remain prose.
+- Errors now go to stdout in the active output format in every case, including failed `fetch` calls, unknown commands and flags, and runtime failures; stderr stays empty except for diagnostics. Exit codes are unchanged. In particular, `fetch URL > file` can place an error document in the file after a failed fetch, so callers must check the exit status.
+
+**Upgrading from 1.x:** add `--plain` (or `--axi=false`) to any script that parses the old plain text, and check the exit status instead of reading stderr to tell a failure from a result. A successful `--json` result is unchanged.
 
 ### Added
 
@@ -14,15 +21,13 @@ These changes will be released as version 2.0.0.
 
 ### Changed
 
-- **Breaking:** TOON is now the default output, including `help[]` next steps, instead of requiring `--axi`. To migrate scripts that need the previous plain text, add `--plain`; `--axi=false` is equivalent. `--axi` remains an accepted no-op alias, `--json` still selects JSON, and `--plain --json` is a usage error (exit 2). `fetch` success still writes the raw response body unchanged, and `setup` and `completion` remain prose.
 - The MCP tools now return the CLI's default TOON output, with no extra flag or conversion layer.
 - The README H1 now names the repository, `llm-extract-axi`; command examples and the product name remain `llm-extract`.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `4ef2b67`, the commit the `v1.1.0` tag carries; every `file:line` pointer and probe was re-checked there, and the `extract-links --axi` probe quote now names all four default fields.
-- The README's pin-a-version install example now uses `v1.1.0` instead of the stale `v1.0.1`.
+- The README's pin-a-version install example now uses `v2.0.0` instead of the stale `v1.0.1`.
 
 ### Fixed
 
-- Errors now go to stdout in the active output format in every case, including failed `fetch` calls, unknown commands and flags, and runtime failures; stderr stays empty except for diagnostics. Exit codes are unchanged. In particular, `fetch URL > file` can place an error document in the file after a failed fetch, so callers must check the exit status.
 - `setup` hooks now quote a binary path containing a backslash for POSIX sh. An unquoted backslash is an escape in sh, so a binary at a path like `/opt/my\tools/llm-extract` produced a Claude Code or Codex hook that ran `/opt/mytools/llm-extract` and failed at every session start, and a rerun of `setup` reported it unchanged. A rerun now repairs such a hook written by an older version. The quoting is for POSIX sh only; on Windows, keep `llm-extract` on `PATH` so the hook runs it by bare name (the README states the limit).
 - `extract-links --context` now exits 2 (usage) for an unusable model-key configuration, the same as `extract-relevant`; it used to exit 1, telling an agent a retry might help when only a configuration fix can. A missing API key is now also a usage error (exit 2) in both commands, for the same reason; a failed fetch or model call still exits 1.
 - A URL that is not http or https (`fetch not-a-url`, `extract-links --url ftp://x`) and an empty `--url` or `--context` now exit 2 (usage), like every other rejected flag value; they used to exit 1, telling an agent a retry might help. The `help[]` for a bad URL still says what a valid one looks like.

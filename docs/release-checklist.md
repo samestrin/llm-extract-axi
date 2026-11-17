@@ -34,7 +34,8 @@ The tape's commands are replayed without `vhs` by `go test ./tests/e2e`, so a co
 ## 3. CHANGELOG
 
 - [ ] `CHANGELOG.md` has a `[Unreleased]` section that lists every user-visible change since the last tag, in plain words, without ticket IDs.
-- [ ] That section is renamed to the version and today's date when the tag is pushed.
+- [ ] Before the tag, that section is renamed to the version and today's date, and a fresh empty `[Unreleased]` is left above it, so the tagged commit carries the dated entry.
+- [ ] A major version opens its entry with a `Breaking` section and a short upgrade note saying how to keep the old behaviour.
 
 ## 4. Tag and publish
 
