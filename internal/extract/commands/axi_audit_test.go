@@ -100,6 +100,47 @@ func TestAXIAuditNamedTestsExist(t *testing.T) {
 	}
 }
 
+// Defends the epic 09 truth in the admission evidence: only Exceptions 1 and
+// 2 remain, each with its reason; Exceptions 3 (errors on stderr), 4 (no
+// Codex or OpenCode target) and 5 (help[] is --axi only) described behaviour
+// the code no longer has and must not come back as numbered exceptions. The
+// no-session-end reason and the exit-2 compliance statement must stay.
+func TestAXIAuditListsOnlyTheLiveExceptions(t *testing.T) {
+	audit := readRepoFile(t, auditPath)
+	for _, want := range []string{
+		"Exception 1", "byte pipe", // fetch stays a byte pipe, with its reason
+		"Exception 2", "--full", // no --full, with its reason
+		"session-end", "session state", // the kept no-session-end reason
+		"not listed as a gap", // exit 2 is compliant, not an exception
+	} {
+		if !strings.Contains(audit, want) {
+			t.Errorf("%s no longer states %q", auditPath, want)
+		}
+	}
+	withdrawn := regexp.MustCompile(`Exception [3-9]`)
+	if m := withdrawn.FindString(audit); m != "" {
+		t.Errorf("%s still carries %q; that exception was withdrawn", auditPath, m)
+	}
+	entry := readRepoFile(t, catalogEntryPath)
+	if m := withdrawn.FindString(entry); m != "" {
+		t.Errorf("%s still carries %q; that exception was withdrawn", catalogEntryPath, m)
+	}
+	m := regexp.MustCompile(`(?m)^\s*exception: "(.*)"$`).FindStringSubmatch(entry)
+	if m == nil {
+		t.Fatalf("%s has no single-line exception field", catalogEntryPath)
+	}
+	for _, want := range []string{"(1)", "(2)", "session-end"} {
+		if !strings.Contains(m[1], want) {
+			t.Errorf("%s's exception field no longer states %q", catalogEntryPath, want)
+		}
+	}
+	for _, gone := range []string{"(3)", "(4)", "(5)"} {
+		if strings.Contains(m[1], gone) {
+			t.Errorf("%s's exception field still lists %s; that exception was withdrawn", catalogEntryPath, gone)
+		}
+	}
+}
+
 // Defends the catalog entry against reviewing one revision and citing another:
 // reviewed_revision must be the commit the audit says it was made against.
 func TestAXICatalogEntryReviewsTheAuditedRevision(t *testing.T) {

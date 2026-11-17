@@ -60,9 +60,15 @@ make build                    # binaries land in ./build/
 ./build/llm-extract --version
 ```
 
-### Claude Code setup
+### Agent setup (Claude Code, Codex, OpenCode)
 
-Run `llm-extract setup` in a project (or with `--dir`) to write a SessionStart hook into `.claude/settings.json` and an Agent Skill into `.claude/skills/llm-extract/SKILL.md`. Other settings are kept, a second run changes nothing, and `--dry-run` shows what would be written. It never touches the home directory.
+Run `llm-extract setup` in a project (or with `--dir`) to register the tool with all three coding agents:
+
+- **Claude Code**: a SessionStart hook in `.claude/settings.json` and an Agent Skill in `.claude/skills/llm-extract/SKILL.md`.
+- **Codex**: a SessionStart hook in `.codex/hooks.json` (Codex hooks are enabled by default; no config edit is written).
+- **OpenCode**: a plugin in `.opencode/plugins/llm-extract.js` that adds the home view to each session.
+
+`--target` picks the agents (repeat it or give a comma list, for example `--target claude,codex`); the default is all three. Other settings are kept, a second run changes nothing, and running setup again after the binary moves points the hooks at the new path. `--dry-run` shows what would be written. It never touches the home directory and writes nothing outside the project directory.
 
 Hook commands are quoted for POSIX sh (macOS and Linux), including paths with spaces or backslashes. Windows shells are not covered: cmd.exe and PowerShell do not read POSIX quoting, so an absolute-path hook may not run there. Keep `llm-extract` on `PATH` on Windows so the hook runs it by bare name.
 
@@ -78,7 +84,7 @@ Re-run the install one-liner; it replaces the binaries only after the new downlo
 
 ### Uninstall
 
-Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or the `INSTALL_DIR`). To remove the Claude Code integration, delete the hook entry `setup` added to `.claude/settings.json` and the `.claude/skills/llm-extract/` directory in the project.
+Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or the `INSTALL_DIR`). To remove the agent integrations, delete the hook entries `setup` added to `.claude/settings.json` and `.codex/hooks.json`, the `.claude/skills/llm-extract/` directory and the `.opencode/plugins/llm-extract.js` file in the project.
 
 ## Quick start
 
@@ -107,7 +113,7 @@ llm-extract extract-relevant --path https://example.com/docs --context "installa
 | `llm-extract fetch <url>` | Download a URL with a direct HTTP GET and write the body to stdout |
 | `llm-extract extract-links --url <url>` | Extract a page's links, ranked, each with text, score and section |
 | `llm-extract extract-relevant --path <path> --context <text>` | Pull the parts of files, a directory or a URL relevant to the context, using a model |
-| `llm-extract setup` | Install the Claude Code SessionStart hook and Agent Skill in a project |
+| `llm-extract setup` | Register llm-extract with Claude Code, Codex and OpenCode in a project; `--target` picks the agents |
 
 Running `llm-extract` with no arguments prints the reach table below, the path of the binary, a one-line description and the configuration a run would use (whether an API key is set, the model, the base URL, the fetch size cap). It makes no network or model call.
 
@@ -120,7 +126,7 @@ llm-extract extract-relevant --path ./src --context "API endpoint definitions"
 llm-extract extract-relevant --path ./docs --context "configuration options" --concurrency 4 -o out.md
 ```
 
-Every command takes `--help`, and the global `--axi` flag switches output to TOON on the home view, `extract-links` and `extract-relevant`.
+Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `extract-links` and `extract-relevant`, with a `help[]` list of next steps. The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` stays the raw body (`--json` keeps its metadata envelope), and `setup` and `completion` stay prose.
 
 ## Configuration
 
@@ -142,15 +148,15 @@ On `fetch`, the flags `--max-bytes`, `--timeout`, `--retries` and `--user-agent`
 
 ## Output and exit codes
 
-Output modes: human-readable text by default, `--json` for structured output, `--min` for a token-optimized form, and `--axi` for TOON. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and exits non-zero (a failed `extract-links --context` ranking keeps its links and `total` beside the `error`). A result built from a cut model input carries a `truncated` note. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: plain mode prints a short summary, while `--json` and `--axi` print one structured document without the passages.
+Output modes: TOON by default, `--plain` for human-readable text, `--json` for structured output, and `--min` for a token-optimized form. Every error is printed on stdout in the active format — a TOON `error`/`message`/`help[]` document by default, one JSON document under `--json`, an `Error: ...` line under `--plain` — and stderr stays empty; a failed `fetch` included. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and exits non-zero (a failed `extract-links --context` ranking keeps its links and `total` beside the `error`). A result built from a cut model input carries a `truncated` note. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: `--plain` prints a short summary, while the default TOON and `--json` print one structured document without the passages.
 
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
 
-See [docs/output.md](docs/output.md) for the full behavior: partial results, where errors are printed under `--axi`, and what `llm-extract-mcp` does with a failed run.
+See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
 
 ## Performance
 
@@ -188,10 +194,9 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - `--format` accepts `raw` only; `text` and `markdown` are rejected.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
 - The model reads a bounded input: `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes. A result built from a cut input carries a `truncated` note; there is no `--full`.
-- `fetch` prints the raw body and ignores `--axi`; TOON applies to the home view, `extract-links` and `extract-relevant`.
-- `help[]` next steps appear only on the home view and on `extract-links` and `extract-relevant` results and errors under `--axi`.
-- Plain-mode errors (neither `--axi` nor `--json`) print on stderr, not stdout; under `--axi` the same error is a structured document on stdout.
-- `setup` targets Claude Code only: there is no Codex or OpenCode target and no session-end hook.
+- A successful `fetch` prints the raw body (`--json` keeps its metadata envelope); TOON applies to the home view, `extract-links` and `extract-relevant`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
+- `help[]` next steps appear by default (TOON) on the home view and on `extract-links` and `extract-relevant` results and errors; `--json` output is unchanged and `--plain` is prose.
+- `setup` registers Claude Code, Codex and OpenCode; there is no session-end hook, because the tool keeps no session state.
 - The AXI exceptions behind these limits, with their reasons, are recorded in [docs/axi-audit.md](docs/axi-audit.md).
 
 ## Documentation
