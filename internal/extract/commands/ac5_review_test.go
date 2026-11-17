@@ -99,21 +99,28 @@ func TestCompletionWithoutAKnownShellIsUsageError(t *testing.T) {
 func TestExtractLinksRankingHelpNamesTheKeyOnlyForAKeyProblem(t *testing.T) {
 	page := helpPageServer(t, `<html><body><h1><a href="/a">A</a></h1></body></html>`)
 	keyHint := func(h []any) bool { return len(h) > 0 && strings.Contains(h[0].(string), "API_KEY") }
+	// rankingHint is the non-key ranking advice: it names --context and not
+	// the URL, so the generic fetch advice ("Check the URL is reachable") or
+	// the key advice cannot pass for it.
+	rankingHint := func(h []any) bool {
+		return len(h) > 0 && strings.Contains(h[0].(string), "--context") &&
+			!strings.Contains(h[0].(string), "URL") && !keyHint(h)
+	}
 
 	t.Run("reply is not JSON", func(t *testing.T) {
 		pointExtractRelevantAt(t, fakeLLM(t, func(string) string { return "I cannot rank these." }))
 		withAXI(t)
 		h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth"))
-		if len(h) == 0 || keyHint(h) {
-			t.Errorf("a non-JSON reply gets key advice: %v", h)
+		if !rankingHint(h) {
+			t.Errorf("a non-JSON reply lacks the ranking advice: %v", h)
 		}
 	})
 	t.Run("server error", func(t *testing.T) {
 		failingLLM(t, 500)
 		withAXI(t)
 		h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth"))
-		if len(h) == 0 || keyHint(h) {
-			t.Errorf("a 500 gets key advice: %v", h)
+		if !rankingHint(h) {
+			t.Errorf("a 500 lacks the ranking advice: %v", h)
 		}
 	})
 	t.Run("key rejected", func(t *testing.T) {
@@ -121,6 +128,13 @@ func TestExtractLinksRankingHelpNamesTheKeyOnlyForAKeyProblem(t *testing.T) {
 		withAXI(t)
 		if h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth")); !keyHint(h) {
 			t.Errorf("a 401 lacks key advice: %v", h)
+		}
+	})
+	t.Run("key forbidden", func(t *testing.T) {
+		failingLLM(t, 403)
+		withAXI(t)
+		if h := helpOf(t, linksOut(t, "--url", page.URL, "--context", "auth")); !keyHint(h) {
+			t.Errorf("a 403 lacks key advice: %v", h)
 		}
 	})
 	t.Run("no key", func(t *testing.T) {
