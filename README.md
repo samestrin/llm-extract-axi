@@ -1,6 +1,6 @@
 # llm-extract-axi
 
-A CLI for agents that pulls only what is needed from a large file or a web page, without filling the agent's context.
+llm-extract-axi is a single Go binary that gives an AI agent, or you, commands to fetch a web page and pull only what is needed from a large file or page, with [AXI](https://axi.md)-compliant output built for agents to parse.
 
 [![test](https://github.com/samestrin/llm-extract-axi/actions/workflows/test.yml/badge.svg)](https://github.com/samestrin/llm-extract-axi/actions/workflows/test.yml)
 [![release](https://img.shields.io/github/v/release/samestrin/llm-extract-axi)](https://github.com/samestrin/llm-extract-axi/releases)
