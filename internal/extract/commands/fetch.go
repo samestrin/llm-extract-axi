@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
+	"github.com/samestrin/llm-extract-axi/pkg/output"
 )
 
 // formatRaw is the only output format ported so far: the body as received.
@@ -59,7 +60,14 @@ Configuration is read from environment variables (flags override them):
 A response body larger than the cap is an error, never a truncated page.
 
 Use --output to save the body to a file instead of stdout.`,
-		Args: cobra.ExactArgs(1),
+		// Marked as a usage error: cobra's own wording carries no usage
+		// marker, so a missing or extra URL exited 1, as if a retry could help.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return output.UsageError(err)
+			}
+			return nil
+		},
 		RunE: runFetch,
 	}
 	cmd.Flags().StringVar(&fetchOutput, "output", "", "Write the body to this file instead of stdout")
@@ -78,7 +86,7 @@ func runFetch(cmd *cobra.Command, args []string) error {
 		return errInvalidURL
 	}
 	if fetchFormat != formatRaw {
-		return fmt.Errorf("unsupported --format %q: only %q is available", fetchFormat, formatRaw)
+		return output.UsageError(fmt.Errorf("unsupported --format %q: only %q is available", fetchFormat, formatRaw))
 	}
 
 	cfg := fetch.LoadConfig()

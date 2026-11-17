@@ -275,6 +275,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	RootCmd.SetArgs(args)
 	RootCmd.SetOut(stdout)
 	RootCmd.SetErr(stderr)
+	initCompletionCmd(RootCmd)
 	cmd, err := RootCmd.ExecuteC()
 	if err == nil {
 		return 0
@@ -442,6 +443,9 @@ func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
 		help = []string{"Set OPENAI_BASE_URL to the OpenAI-compatible endpoint the ANTHROPIC_API_KEY belongs to, or set OPENAI_API_KEY instead, then run the command again", usage}
 	case code == int(goaxi.ExitUsage):
 		doc["flags"] = flagNames(cmd)
+		if cmd.HasAvailableSubCommands() {
+			doc["commands"] = commandNames(cmd)
+		}
 		help = []string{usage}
 	case errors.Is(err, errInvalidURL):
 		help = []string{"Pass a URL that starts with http:// or https://", usage}

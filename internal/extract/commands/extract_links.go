@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -261,7 +262,7 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	}
 	result.Model, result.BytesSent = modelUse(llmapi.GetAPIConfig().Model)
 	if GlobalAXIOutput {
-		result.Help = extractLinksHelp(result)
+		result.Help = extractLinksHelp(result, cause)
 	}
 
 	if err := outputExtractLinksResult(cmd, result); err != nil {
@@ -277,12 +278,17 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 }
 
 // extractLinksHelp is the help[] block under --axi: what to run next after an
-// error, an empty result, or a list.
-func extractLinksHelp(result ExtractLinksResult) []string {
+// error, an empty result, or a list. cause is the error behind result.Error.
+func extractLinksHelp(result ExtractLinksResult, cause error) []string {
 	const usage = "Run 'llm-extract extract-links --help' for usage"
 	switch {
-	case result.Error != "" && strings.HasPrefix(result.Error, "LLM ranking failed"):
+	case result.Error != "" && isKeyProblem(cause):
 		return []string{"Check the key configuration: OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL; or drop --context to rank by page position without a model", usage}
+	// Any other ranking failure, such as a reply that is not JSON or a server
+	// error, says nothing about the key; sending the caller to fix a key that
+	// works wastes the retry.
+	case result.Error != "" && strings.HasPrefix(result.Error, "LLM ranking failed"):
+		return []string{"The model call or its reply failed; run the command again, or drop --context to rank by page position without a model", usage}
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
@@ -290,6 +296,16 @@ func extractLinksHelp(result ExtractLinksResult) []string {
 	default:
 		return []string{"Read the top link: llm-extract extract-relevant --path " + pathArg("links[0].href") + " --context '<what you need>'"}
 	}
+}
+
+// isKeyProblem reports whether err is about the model key: a configuration
+// that cannot be used, or a key the endpoint rejected (401 or 403).
+func isKeyProblem(err error) bool {
+	if errors.Is(err, llmapi.ErrAPIKeyRequired) || errors.Is(err, llmapi.ErrBaseURLRequired) {
+		return true
+	}
+	var apiErr *llmapi.APIError
+	return errors.As(err, &apiErr) && (apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden)
 }
 
 // rankingTruncation says how the model's ranking input was cut down from the
