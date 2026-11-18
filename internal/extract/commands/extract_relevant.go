@@ -18,9 +18,9 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
 
-	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
-	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/internal/support/fetch"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 var (

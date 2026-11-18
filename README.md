@@ -46,10 +46,11 @@ To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-
 Requires Go 1.24 or later:
 
 ```bash
-go install github.com/samestrin/llm-extract-axi/cmd/llm-extract@latest
+go install github.com/samestrin/llm-extract-axi/v2/cmd/llm-extract@latest
+go install github.com/samestrin/llm-extract-axi/v2/cmd/llm-extract-mcp@latest
 ```
 
-This installs only the CLI; the release binary is the way to get `llm-extract-mcp`. The installed binary reports the installed release with `llm-extract --version` (for example `2.0.0`), read from the module version `go install` recorded.
+The binaries land in `$(go env GOPATH)/bin`. The module path ends in `/v2`; the old path without it stops at v1.1.0. The installed binary reports the installed release with `llm-extract --version` (for example `2.0.0`), read from the module version `go install` recorded.
 
 ### From source
 
@@ -80,7 +81,7 @@ npx skills add samestrin/llm-extract-axi --skill llm-extract
 
 ### Upgrade
 
-Re-run the install one-liner; it replaces the binaries only after the new download verifies.
+Re-run the install one-liner; it replaces the binaries only after the new download verifies. With Go, re-run the two `go install .../v2/cmd/...@latest` lines above; the old path without `/v2` stops at v1.1.0.
 
 ### Uninstall
 

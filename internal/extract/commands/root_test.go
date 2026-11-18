@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

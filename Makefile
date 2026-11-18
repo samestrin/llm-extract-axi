@@ -1,6 +1,6 @@
 .PHONY: build build-all test test-race test-cover test-scripts cover-gate lint vet fmt golangci install clean hooks
 
-MODULE    := github.com/samestrin/llm-extract-axi
+MODULE    := github.com/samestrin/llm-extract-axi/v2
 BUILD_DIR := build
 DIST_DIR  := dist
 

@@ -9,8 +9,8 @@ import (
 
 	goaxi "github.com/samestrin/go-axi"
 
-	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // standInForDefaultURL sends every model call bound for llmapi.DefaultBaseURL
