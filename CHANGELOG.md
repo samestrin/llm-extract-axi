@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `67ab77e`, the commit the `v2.0.0` tag carries; every `file:line` pointer was re-checked against the tagged source.
+
 ## [2.0.0] - 2026-11-17
 
 ### Breaking
