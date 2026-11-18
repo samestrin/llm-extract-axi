@@ -23,6 +23,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # A v2+ release must declare a /vN module path, or `go install ...@v2.x`
+      # fails and `@latest` stays on v1. The README's go install lines name /v2.
+      - name: go install and /v2 module path
+        run: |
+          go install ./...
+          module=$(go list -m)
+          echo "module: $module"
+          case "$module" in
+            */v2) ;;
+            *) echo "::error::module path $module does not end in /v2"; exit 1 ;;
+          esac
+
       - name: go vet
         run: go vet ./...
 

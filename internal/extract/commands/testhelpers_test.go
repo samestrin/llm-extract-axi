@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // withAXI turns on TOON output for one test, as --axi does on the root.

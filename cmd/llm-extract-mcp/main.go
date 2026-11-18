@@ -10,8 +10,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/samestrin/llm-extract-axi/internal/extract/commands"
-	"github.com/samestrin/llm-extract-axi/internal/extract/mcpserver"
+	"github.com/samestrin/llm-extract-axi/v2/internal/extract/commands"
+	"github.com/samestrin/llm-extract-axi/v2/internal/extract/mcpserver"
 )
 
 // serverVersion is stamped by the Makefile with -X main.serverVersion; when

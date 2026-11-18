@@ -207,7 +207,7 @@ func TestNonZeroExitWithEmptyStderr(t *testing.T) {
 func buildCLI(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "llm-extract")
-	out, err := exec.Command("go", "build", "-o", bin, "github.com/samestrin/llm-extract-axi/cmd/llm-extract").CombinedOutput()
+	out, err := exec.Command("go", "build", "-o", bin, "github.com/samestrin/llm-extract-axi/v2/cmd/llm-extract").CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}

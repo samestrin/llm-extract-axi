@@ -19,7 +19,7 @@ out="${2:-}"
 [[ "$version" != "dev" ]] || { echo "Error: refusing to stamp the unstamped default \"dev\"" >&2; exit 1; }
 
 cd "$(dirname "$0")/.."
-MODULE="github.com/samestrin/llm-extract-axi"
+MODULE="github.com/samestrin/llm-extract-axi/v2"
 # The CLI version lives on commands.Version, not on main: the cobra root reads
 # it there, so stamping main would leave `llm-extract --version` saying "dev".
 CLI_LDFLAGS="-s -w -X $MODULE/internal/extract/commands.Version=$version"

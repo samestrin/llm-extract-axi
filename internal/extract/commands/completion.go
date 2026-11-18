@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // initCompletionCmd replaces cobra's default completion command with a fresh

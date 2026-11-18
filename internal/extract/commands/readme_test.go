@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samestrin/llm-extract-axi/internal/support/fetch"
+	"github.com/samestrin/llm-extract-axi/v2/internal/support/fetch"
 )
 
 // readmeSection returns the README text between a "## heading" and the next

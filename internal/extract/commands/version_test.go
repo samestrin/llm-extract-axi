@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// A `go install github.com/samestrin/llm-extract-axi/...@latest` binary has no
+// A `go install github.com/samestrin/llm-extract-axi/v2/...@latest` binary has no
 // ldflags stamp, and `llm-extract --version` printed "dev" instead of the
 // installed release. These tests defend the fallback that reads the module
 // version from the build info, and the rule that an ldflags stamp always wins.

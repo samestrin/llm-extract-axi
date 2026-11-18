@@ -13,7 +13,7 @@ import (
 
 	goaxi "github.com/samestrin/go-axi"
 
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // axiOffAfter restores the package-global AXI default a run() with --axi

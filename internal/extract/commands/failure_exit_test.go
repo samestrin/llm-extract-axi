@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
 )
 
 // These tests defend the rule that nothing reports success when it did not

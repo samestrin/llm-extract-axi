@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	goaxi "github.com/samestrin/go-axi"
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 func linksOut(t *testing.T, args ...string) string {

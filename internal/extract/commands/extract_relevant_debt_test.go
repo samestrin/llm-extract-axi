@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samestrin/llm-extract-axi/pkg/llmapi"
-	"github.com/samestrin/llm-extract-axi/pkg/output"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // TestOutputExtractResultReportsFormatterErrorForFile defends EST-5240 row 1:
