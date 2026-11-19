@@ -236,7 +236,7 @@ func TestFetchHeadUsageErrors(t *testing.T) {
 		if code != 2 {
 			t.Errorf("%v: exit %d, want 2; stdout=%q stderr=%q", args, code, stdout, stderr)
 		}
-		if !strings.Contains(stdout, `for "--head" flag`) {
+		if !strings.Contains(stdout, "invalid argument") || !strings.Contains(stdout, "--head") {
 			t.Errorf("%v: error does not name --head: %q", args, stdout)
 		}
 	}

@@ -236,7 +236,7 @@ func probeFetchMaxBytes(t *testing.T) {
 	}
 
 	t.Setenv("FETCH_MAX_BYTES", "4096")
-	code, out, stderr = runCLI(t, "fetch", srv.URL)
+	code, out, stderr = runCLI(t, "fetch", srv.URL, "--plain")
 	if code != 0 || out != body {
 		t.Errorf("a body under FETCH_MAX_BYTES=4096 exited %d with %q, want the whole page: %s", code, out, stderr)
 	}
@@ -260,7 +260,7 @@ func probeFetchTimeout(t *testing.T) {
 	}
 
 	t.Setenv("FETCH_TIMEOUT", "5")
-	code, out, stderr = runCLI(t, "fetch", srv.URL)
+	code, out, stderr = runCLI(t, "fetch", srv.URL, "--plain")
 	if code != 0 || out != "slow page" {
 		t.Errorf("the same page under FETCH_TIMEOUT=5 exited %d with %q, want the whole page: %s", code, out, stderr)
 	}
@@ -303,7 +303,7 @@ func probeFetchUserAgent(t *testing.T) {
 
 	const probeUA = "readme-probe-agent"
 	t.Setenv("FETCH_USER_AGENT", probeUA)
-	if code, out, stderr := runCLI(t, "fetch", srv.URL); code != 0 || out != "page" {
+	if code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain"); code != 0 || out != "page" {
 		t.Fatalf("fetch exited %d with %q: %s", code, out, stderr)
 	}
 	if got, _ := ua.Load().(string); got != probeUA {
@@ -311,7 +311,7 @@ func probeFetchUserAgent(t *testing.T) {
 	}
 
 	t.Setenv("FETCH_USER_AGENT", "")
-	if code, out, stderr := runCLI(t, "fetch", srv.URL); code != 0 || out != "page" {
+	if code, out, stderr := runCLI(t, "fetch", srv.URL, "--plain"); code != 0 || out != "page" {
 		t.Fatalf("fetch exited %d with %q: %s", code, out, stderr)
 	}
 	if got, _ := ua.Load().(string); got != fetch.DefaultUserAgent {
