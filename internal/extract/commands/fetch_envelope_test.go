@@ -260,6 +260,20 @@ func TestFetchEnvelopeNonText(t *testing.T) {
 		{"application/json", `{"a":1}`, true},
 		{"application/xhtml+xml", "<x/>", true},
 		{"image/svg+xml", "<svg/>", true},
+		// A content type that does not parse says nothing about the bytes,
+		// so the body is withheld rather than trusted.
+		{`text/html; charset="unterminated`, "<p>x</p>", false},
+		// Every application type the switch accepts as text, so a typo in
+		// one sends nothing down the binary path unnoticed.
+		{"application/xml", "<a/>", true},
+		{"application/javascript", "var a;", true},
+		{"application/ecmascript", "var b;", true},
+		{"application/x-javascript", "var c;", true},
+		{"application/x-ndjson", `{"a":1}`, true},
+		{"application/yaml", "a: 1", true},
+		{"application/x-yaml", "b: 2", true},
+		{"application/toml", "a=1", true},
+		{"application/x-www-form-urlencoded", "a=1&b=2", true},
 		{"", "no type", true},
 	}
 	for _, c := range cases {
