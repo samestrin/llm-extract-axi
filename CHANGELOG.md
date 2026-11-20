@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Breaking:** `fetch` now returns a TOON envelope by default (or JSON with `--json`) instead of the raw response body. The envelope reports response metadata, the full body size and whether the body was truncated; its body is capped at 4096 bytes unless `--head N` or `--full` is used, and `--fields` selects the envelope fields to print. To migrate scripts that need the old raw body, use `fetch --output file` to save the whole body to a file, or `fetch --plain --full` to write the whole raw body to stdout.
-- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `67ab77e`, the commit the `v2.0.0` tag carries; every `file:line` pointer was re-checked against the tagged source.
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `d1146a4` (`main` after `v2.0.0`, carrying epic 10's `fetch` TOON envelope, `--fields` and the skill/MCP envelope pass-through); every `file:line` pointer was re-checked there and the `fetch` probes re-run. The README, `docs/output.md`, the audit and the catalog entry no longer list the withdrawn `fetch` exceptions: Exception 1 (`fetch` not TOON) and the `fetch` half of Exception 2 (no `--full`) are gone; the model-input cut on `extract-relevant` and `extract-links --context` stays, stated as an input limit.
 
 ## [2.0.0] - 2026-11-17
 
