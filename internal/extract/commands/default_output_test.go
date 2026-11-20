@@ -76,7 +76,7 @@ func isText(marker string) modeCheck {
 	}
 }
 
-// isExactly: the bytes and nothing else, the contract of fetch, setup and
+// isExactly: the bytes and nothing else: fetch under --plain, and setup and
 // completion, which no encoding flag changes.
 func isExactly(want *string) modeCheck {
 	return func(t *testing.T, code int, stdout, stderr string) {
@@ -110,8 +110,9 @@ func isConflict(t *testing.T, code int, stdout, stderr string) {
 
 // Defends the epic 09 default: TOON with help[] when no flag is given, today's
 // text behind --plain (and --axi=false), --json and --min as before, --axi an
-// accepted no-op, and --plain with --json refused. fetch and setup print the
-// same bytes in every mode that parses. Flipping the default back, or letting
+// accepted no-op, and --plain with --json refused. setup prints the same bytes
+// in every mode that parses; fetch prints its envelope in TOON or JSON and the
+// page bytes under --plain (epic 10 reversed epic 09's byte-identical pin). Flipping the default back, or letting
 // --json lose to it, turns a row of this red. completion's row is
 // TestCLICompletionIgnoresTheOutputMode in tests/e2e: cobra binds that
 // command to the first run's stdout, so only one in-process run sees it.
@@ -149,7 +150,7 @@ func TestOutputModeMatrix(t *testing.T) {
 			isText("Run 'llm-extract --help' for flags"), isUsage, isUsage,
 		}},
 		{"fetch", []string{"fetch", fetchURL}, [7]modeCheck{
-			isExactly(&pageBody), isExactly(&pageBody), isFetchJSON(page), isExactly(&pageBody),
+			isFetchTOON(page), isExactly(&pageBody), isFetchJSON(page), isFetchTOON(page),
 			isExactly(&pageBody), isUsage, isConflict,
 		}},
 		{"extract-links", []string{"extract-links", "--url", linksURL}, [7]modeCheck{
@@ -176,7 +177,7 @@ func TestOutputModeMatrix(t *testing.T) {
 	}
 }
 
-// isFetchJSON: fetch --json as before, the JSON envelope with the page as body.
+// isFetchJSON: fetch --json, the JSON envelope with the page as body.
 func isFetchJSON(page string) modeCheck {
 	return func(t *testing.T, code int, stdout, stderr string) {
 		t.Helper()
@@ -187,8 +188,26 @@ func isFetchJSON(page string) modeCheck {
 		if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 			t.Fatalf("fetch --json is not JSON: %v\n%s", err, stdout)
 		}
-		if got.Body != page {
-			t.Errorf("body = %q, want %q", got.Body, page)
+		if got.Body == nil || *got.Body != page || got.Truncated {
+			t.Errorf("body = %v truncated = %v, want %q whole", got.Body, got.Truncated, page)
+		}
+	}
+}
+
+// isFetchTOON: fetch's default, a TOON envelope with a short page whole in
+// body, not the raw page.
+func isFetchTOON(page string) modeCheck {
+	return func(t *testing.T, code int, stdout, stderr string) {
+		t.Helper()
+		if code != 0 {
+			t.Fatalf("exit %d; stderr=%q", code, stderr)
+		}
+		doc := decodeFetchDoc(t, stdout, false)
+		if doc["body"] != page || doc["truncated"] != false {
+			t.Errorf("envelope = %v, want body %q whole", doc, page)
+		}
+		if stderr != "" {
+			t.Errorf("stderr = %q, want empty", stderr)
 		}
 	}
 }

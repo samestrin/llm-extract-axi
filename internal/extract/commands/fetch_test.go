@@ -140,7 +140,7 @@ func TestFetchCmdJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("not JSON: %q", out)
 	}
-	if got.Body != "<p>j</p>" || got.Status != 200 || got.Tier != "direct" || got.Bytes != 8 {
+	if got.Body == nil || *got.Body != "<p>j</p>" || got.Status != 200 || got.Tier != "direct" || got.Bytes != 8 {
 		t.Errorf("bad payload: %+v", got)
 	}
 }
