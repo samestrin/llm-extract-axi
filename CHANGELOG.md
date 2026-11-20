@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Breaking:** `fetch` now returns a TOON envelope by default (or JSON with `--json`) instead of the raw response body. The envelope reports response metadata, the full body size and whether the body was truncated; its body is capped at 4096 bytes unless `--head N` or `--full` is used, and `--fields` selects the envelope fields to print. To migrate scripts that need the old raw body, use `fetch --output file` to save the whole body to a file, or `fetch --plain --full` to write the whole raw body to stdout.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `67ab77e`, the commit the `v2.0.0` tag carries; every `file:line` pointer was re-checked against the tagged source.
 
 ## [2.0.0] - 2026-11-17
