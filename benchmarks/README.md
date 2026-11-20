@@ -12,13 +12,13 @@ On the committed fixture, a 15,411-byte documentation page:
 
 ```
 raw page      4240 tokens
---axi output  1435 tokens
+--axi output  1432 tokens
 ratio         3.0x (raw / --axi)
 ```
 
 `llm-extract extract-links --axi`, in its default heuristic mode, gives an agent every link on the page, ranked, with its text, score and section, in **3.0x fewer tokens** than the page itself.
 
-Measured on 2026-11-11 with the counter described below. Before `context` left the default row, checked separately against tiktoken: 4503 vs 1733 tokens with `cl100k_base`, 4527 vs 1740 with `o200k_base`, a 2.60 ratio both times.
+Measured on 2026-11-11 with the counter described below (1435 tokens then) and re-run on 2026-11-20 at `v2.1.0`: the shorter `help[]` line from `v2.0.0` (it names `<links[0].href>` instead of quoting the link) took 3 tokens off; the ratio is unchanged. Before `context` left the default row, checked separately against tiktoken: 4503 vs 1733 tokens with `cl100k_base`, 4527 vs 1740 with `o200k_base`, a 2.60 ratio both times.
 
 ## Rerun it
 

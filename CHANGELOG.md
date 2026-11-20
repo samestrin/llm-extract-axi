@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `d3a7fd9`, the commit the `v2.1.0` tag carries; every `file:line` pointer was re-checked and every probe re-run there. The token benchmark re-run at `v2.1.0` counts 1432 `extract-links --axi` tokens, not the 1435 quoted since 2026-11-11 (the `v2.0.0` `help[]` line is 3 tokens shorter); `benchmarks/README.md` and the catalog entry now quote 1432, and the ratio stays 3.0x.
+
 ## [2.1.0] - 2026-11-20
 
 ### Changed
