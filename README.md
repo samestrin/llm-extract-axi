@@ -97,8 +97,16 @@ llm-extract fetch https://example.com
 Real output (trimmed):
 
 ```
-<!doctype html><html lang=en><head><meta charset=utf-8>...<title>Example Domain</title>...
+body: "<!doctype html><html lang=en><head><meta charset=utf-8>...<title>Example Domain</title>..."
+bytes: 577
+content_type: text/html; charset=utf-8
+status: 200
+tier: direct
+truncated: false
+url: "https://example.com"
 ```
+
+`body` holds the first 4096 bytes of the page, cut on a character boundary; `bytes` is the whole page's size and `truncated` says whether `body` holds less. On a large page, `help[]` names `--full` (the whole body) and `--output <file>` (save the raw bytes to a file).
 
 Then ask for only what you need instead of the whole page:
 
@@ -111,7 +119,7 @@ llm-extract extract-relevant --path https://example.com/docs --context "installa
 
 | Command | What it does |
 | --- | --- |
-| `llm-extract fetch <url>` | Download a URL with a direct HTTP GET and write the body to stdout |
+| `llm-extract fetch <url>` | Download a URL with a direct HTTP GET; print a TOON envelope with the first 4096 bytes of the body |
 | `llm-extract extract-links --url <url>` | Extract a page's links, ranked, each with text, score and section |
 | `llm-extract extract-relevant --path <path> --context <text>` | Pull the parts of files, a directory or a URL relevant to the context, using a model |
 | `llm-extract setup` | Register llm-extract with Claude Code, Codex and OpenCode in a project; `--target` picks the agents |
@@ -120,14 +128,15 @@ Running `llm-extract` with no arguments prints the reach table below, the path o
 
 ```bash
 llm-extract fetch https://example.com --output page.html   # keep a large page out of context
-llm-extract fetch https://example.com --json               # metadata (status, bytes) around the body
+llm-extract fetch https://example.com --full               # the whole body in the envelope
+llm-extract fetch https://example.com --json               # the same envelope as JSON
 llm-extract extract-links --url https://example.com --json
 llm-extract extract-links --url https://example.com --context "rate limits"   # LLM ranks links by relevance
 llm-extract extract-relevant --path ./src --context "API endpoint definitions"
 llm-extract extract-relevant --path ./docs --context "configuration options" --concurrency 4 -o out.md
 ```
 
-Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `extract-links` and `extract-relevant`, with a `help[]` list of next steps. The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` stays the raw body (`--json` keeps its metadata envelope), and `setup` and `completion` stay prose.
+Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `fetch`, `extract-links` and `extract-relevant`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text). The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope around the body's first 4096 bytes (`--head N` sets the cut, `--full` the whole body, `--plain` body bytes alone, `--output <file>` saves the whole body to a file), and `setup` and `completion` stay prose.
 
 ## Configuration
 
@@ -194,9 +203,9 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - `fetch` is a direct HTTP GET only: there is no proxy or browser tier, so a page behind a JavaScript or Cloudflare challenge fails with the reason instead of returning the challenge page.
 - `--format` accepts `raw` only; `text` and `markdown` are rejected.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
-- The model reads a bounded input: `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes. A result built from a cut input carries a `truncated` note; there is no `--full`.
-- A successful `fetch` prints the raw body (`--json` keeps its metadata envelope); TOON applies to the home view, `extract-links` and `extract-relevant`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
-- `help[]` next steps appear by default (TOON) on the home view and on `extract-links` and `extract-relevant` results and errors; `--json` output is unchanged and `--plain` is prose.
+- The model reads a bounded input: `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes. A result built from a cut input carries a `truncated` note. These are fixed input limits on what the model reads, not output truncation; the model commands have no `--full`.
+- A successful `fetch` prints a TOON envelope: `bytes` (the whole-body size), `truncated`, and the body's first 4096 bytes, cut on a character boundary. `--head N` sets the cut, `--full` prints the whole body, `--plain` prints body bytes alone (a cut puts a one-line size hint on stderr), `--json` prints the same capped document as JSON, `--fields` selects envelope fields, and `--output <file>` saves the whole body to a file. A body that is not UTF-8 text (an image, a PDF) is never printed: `body` is empty, `truncated` is true, and `help[]` points to `--output`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
+- `help[]` next steps appear by default (TOON) on the home view, on `fetch` when the body is cut or not text, and on `extract-links` and `extract-relevant` results and errors; `--json` output carries no `help[]` and `--plain` is prose.
 - `setup` registers Claude Code, Codex and OpenCode; there is no session-end hook, because the tool keeps no session state.
 - The AXI exceptions behind these limits, with their reasons, are recorded in [docs/axi-audit.md](docs/axi-audit.md).
 
