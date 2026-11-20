@@ -105,15 +105,14 @@ func TestFetchFieldsBodyAndHelp(t *testing.T) {
 		t.Errorf("help[] does not name --full and --output <file>: %v", doc["help"])
 	}
 
-	// help belongs to TOON only: selecting it under --json yields nothing,
-	// as no other command's --json carries help[] either.
+	// help belongs to TOON only: under --json the run carries no help, so
+	// selecting it alone is an error naming help, never an empty success.
 	code, stdout, _ = runCLI(t, "fetch", url, "--fields", "help", "--json")
-	if code != 0 {
-		t.Fatalf("--fields help --json exit %d: %s", code, stdout)
+	if code != 1 {
+		t.Fatalf("--fields help --json exit %d, want 1: %s", code, stdout)
 	}
-	doc = decodeFetchDoc(t, stdout, true)
-	if len(doc) != 0 {
-		t.Errorf("--json carries help[]: %v", doc)
+	if msg := errorMessage(t, stdout); !strings.Contains(msg, "help") {
+		t.Errorf("error does not name help: %q", msg)
 	}
 }
 
@@ -171,7 +170,7 @@ func TestFetchFieldsUnknownIsUsageError(t *testing.T) {
 
 // Defends --fields with --output: the file still holds the whole body, and
 // the envelope carries only the selected fields. body is absent from the
-// --output envelope, so selecting it adds nothing.
+// --output envelope, so selecting it alone is an error naming it.
 func TestFetchFieldsWithOutput(t *testing.T) {
 	t.Setenv("FETCH_MAX_RETRIES", "0")
 	page := strings.Repeat("c", 5000)
@@ -191,14 +190,14 @@ func TestFetchFieldsWithOutput(t *testing.T) {
 		t.Errorf("--output selection wrong: %v", doc)
 	}
 
-	// body is not in the --output envelope; asking for it yields an empty
-	// document, not the body the envelope never carried.
+	// body is not in the --output envelope; asking for it alone is an error
+	// naming body, not an empty success and not the body it never carried.
 	code, stdout, _ = runCLI(t, "fetch", url, "--output", outFile, "--fields", "body", "--json")
-	if code != 0 {
-		t.Fatalf("--fields body --output exit %d: %s", code, stdout)
+	if code != 1 {
+		t.Fatalf("--fields body --output exit %d, want 1: %s", code, stdout)
 	}
-	if doc := decodeFetchDoc(t, stdout, true); len(doc) != 0 {
-		t.Errorf("--output envelope grew a body: %v", doc)
+	if msg := errorMessage(t, stdout); !strings.Contains(msg, "body") {
+		t.Errorf("error does not name body: %q", msg)
 	}
 }
 
@@ -237,8 +236,8 @@ func TestFetchFieldsWithPlainIsUsageError(t *testing.T) {
 }
 
 // Defends the empty spec and the absent field: --fields "" is the default
-// envelope, and a selected field the run does not carry (output without
-// --output) stays absent rather than printing an empty placeholder.
+// envelope, and a selection of only fields the run does not carry (output
+// without --output) is an error naming them, never an empty success.
 func TestFetchFieldsEmptySpecAndAbsentField(t *testing.T) {
 	t.Setenv("FETCH_MAX_RETRIES", "0")
 	url := servePage(t, fetchPage{contentType: "text/plain", body: "hi"})
@@ -255,10 +254,87 @@ func TestFetchFieldsEmptySpecAndAbsentField(t *testing.T) {
 	}
 
 	code, stdout, _ = runCLI(t, "fetch", url, "--fields", "output", "--json")
-	if code != 0 {
-		t.Fatalf("--fields output exit %d: %s", code, stdout)
+	if code != 1 {
+		t.Fatalf("--fields output exit %d, want 1: %s", code, stdout)
 	}
-	if doc := decodeFetchDoc(t, stdout, true); len(doc) != 0 {
-		t.Errorf("absent output printed as a placeholder: %v", doc)
+	if msg := errorMessage(t, stdout); !strings.Contains(msg, "output") {
+		t.Errorf("error does not name output: %q", msg)
+	}
+}
+
+// Defends the empty-selection outcome in BOTH encodings (review of PR #71):
+// selecting only fields this run does not carry must print an explicit error
+// document in the active encoding and exit 1 — the flag values are valid, so
+// it is not a usage error. Before the fix, TOON printed zero bytes and --json
+// printed {} , both exit 0: success with no result, and the two formats
+// disagreed about whether output exists. Also guards the other side: a mixed
+// selection with at least one present field still succeeds with what is there.
+func TestFetchFieldsEmptySelectionIsError(t *testing.T) {
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	small := servePage(t, fetchPage{contentType: "text/plain", body: "hi"})
+	cut := servePage(t, fetchPage{contentType: "text/plain", body: strings.Repeat("d", 5000)})
+	outFile := filepath.Join(t.TempDir(), "page.txt")
+
+	cases := []struct {
+		name string
+		url  string
+		args []string
+		want string
+		// jsonOnly marks a case that exists only under --json: help on a
+		// cut body IS present under TOON, so only --json drops it.
+		jsonOnly bool
+	}{
+		{"output without --output", small, []string{"--fields", "output"}, "output", false},
+		{"help on an uncut body", small, []string{"--fields", "help"}, "help", false},
+		{"help under --json", cut, []string{"--fields", "help"}, "help", true},
+		{"body under --output", small, []string{"--output", outFile, "--fields", "body"}, "body", false},
+		{"two absent fields", small, []string{"--fields", "output,help"}, "output", false},
+	}
+	for _, c := range cases {
+		for _, asJSON := range []bool{false, true} {
+			if c.jsonOnly && !asJSON {
+				continue
+			}
+			mode := "toon"
+			args := append([]string{"fetch", c.url}, c.args...)
+			if asJSON {
+				mode = "json"
+				args = append(args, "--json")
+			}
+			t.Run(c.name+"/"+mode, func(t *testing.T) {
+				code, stdout, stderr := runCLI(t, args...)
+				if code != 1 {
+					t.Fatalf("exit %d, want 1; stdout=%q stderr=%q", code, stdout, stderr)
+				}
+				if stdout == "" {
+					t.Fatal("exit 1 with zero bytes on stdout: the outcome must be explicit")
+				}
+				doc := decodeFetchDoc(t, stdout, asJSON)
+				if doc["error"] != true {
+					t.Errorf("document does not say error: %v", doc)
+				}
+				msg := fmt.Sprint(doc["message"])
+				if !strings.Contains(msg, c.want) || !strings.Contains(msg, "--fields") {
+					t.Errorf("message does not name the selection and %q: %q", c.want, msg)
+				}
+			})
+		}
+	}
+
+	// The other side of the guard: one present field is enough to succeed,
+	// and the absent one stays out without an error.
+	for _, asJSON := range []bool{false, true} {
+		args := []string{"fetch", small, "--fields", "url,output"}
+		if asJSON {
+			args = append(args, "--json")
+		}
+		code, stdout, _ := runCLI(t, args...)
+		if code != 0 {
+			t.Fatalf("mixed selection exit %d: %s", code, stdout)
+		}
+		doc := decodeFetchDoc(t, stdout, asJSON)
+		if len(doc) != 1 || doc["url"] != small {
+			t.Errorf("mixed selection wrong: %v", doc)
+		}
 	}
 }
