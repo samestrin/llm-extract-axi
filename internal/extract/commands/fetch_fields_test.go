@@ -130,6 +130,12 @@ func TestFetchFieldsUnknownIsUsageError(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	valid := strings.Join(fetchFieldNames, ", ")
+	// Under the default TOON too: the exit code comes from the wording, not
+	// from the encoding the error is printed in.
+	code, stdout, _ := runCLI(t, "fetch", srv.URL, "--fields", "bogus")
+	if code != 2 || !strings.Contains(stdout, "unknown field") || !strings.Contains(stdout, "valid fields") {
+		t.Errorf("TOON unknown field: exit %d, stdout=%q", code, stdout)
+	}
 	for _, bad := range []string{"bogus", "Href", ""} {
 		spec := "url," + bad
 		code, stdout, _ := runCLI(t, "fetch", srv.URL, "--fields", spec, "--json")
@@ -147,7 +153,7 @@ func TestFetchFieldsUnknownIsUsageError(t *testing.T) {
 
 	// The same unknown name through extract-links: the sentence around the
 	// valid list must be identical, only the list differs.
-	code, stdout, _ := runCLI(t, "extract-links", "--url", srv.URL, "--fields", "bogus", "--json")
+	code, stdout, _ = runCLI(t, "extract-links", "--url", srv.URL, "--fields", "bogus", "--json")
 	if code != 2 {
 		t.Fatalf("extract-links --fields bogus: exit %d, want 2", code)
 	}
@@ -231,8 +237,8 @@ func TestFetchFieldsWithPlainIsUsageError(t *testing.T) {
 }
 
 // Defends the empty spec and the absent field: --fields "" is the default
-// envelope, and a selected field the run does not carry (final_url without a
-// redirect) stays absent rather than printing an empty placeholder.
+// envelope, and a selected field the run does not carry (output without
+// --output) stays absent rather than printing an empty placeholder.
 func TestFetchFieldsEmptySpecAndAbsentField(t *testing.T) {
 	t.Setenv("FETCH_MAX_RETRIES", "0")
 	url := servePage(t, fetchPage{contentType: "text/plain", body: "hi"})
@@ -248,11 +254,11 @@ func TestFetchFieldsEmptySpecAndAbsentField(t *testing.T) {
 		}
 	}
 
-	code, stdout, _ = runCLI(t, "fetch", url, "--fields", "final_url", "--json")
+	code, stdout, _ = runCLI(t, "fetch", url, "--fields", "output", "--json")
 	if code != 0 {
-		t.Fatalf("--fields final_url exit %d: %s", code, stdout)
+		t.Fatalf("--fields output exit %d: %s", code, stdout)
 	}
 	if doc := decodeFetchDoc(t, stdout, true); len(doc) != 0 {
-		t.Errorf("absent final_url printed as a placeholder: %v", doc)
+		t.Errorf("absent output printed as a placeholder: %v", doc)
 	}
 }

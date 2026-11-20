@@ -35,7 +35,62 @@ var (
 	fetchJSON      bool
 	fetchHead      int
 	fetchFull      bool
+	fetchFields    string
 )
+
+// fetchFieldNames are the envelope fields --fields selects from, in envelope
+// order. Every field FetchResult can carry is selectable, including the
+// conditional output and the TOON-only help.
+var fetchFieldNames = []string{"url", "final_url", "status", "tier", "format", "content_type", "bytes", "truncated", "output", "body", "help"}
+
+// parseFetchFields turns the --fields value into a set, or nil for an empty
+// spec (the whole envelope). An unknown name is a usage error that lists the
+// valid ones, in the same wording extract-links --fields uses; the wording
+// matches the marker output.ExitCodeFor reads, so the exit code is 2.
+func parseFetchFields(spec string) (map[string]bool, error) {
+	if spec == "" {
+		return nil, nil
+	}
+	set := make(map[string]bool)
+	for _, n := range strings.Split(spec, ",") {
+		n = strings.ToLower(strings.TrimSpace(n))
+		valid := false
+		for _, f := range fetchFieldNames {
+			if f == n {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("invalid argument %q for \"--fields\" flag: unknown field; valid fields: %s", n, strings.Join(fetchFieldNames, ", "))
+		}
+		set[n] = true
+	}
+	return set, nil
+}
+
+// selectFetchFields keeps only the fields the caller asked for. It selects
+// from the envelope's JSON form, so a selected zero value (bytes 0,
+// truncated false) is still printed, while a field the run does not carry
+// (output without --output, body under --output) stays absent. UseNumber
+// keeps large byte counts exact, as projectJSON does for the whole envelope.
+func selectFetchFields(out FetchResult, set map[string]bool) (map[string]any, error) {
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var doc map[string]any
+	if err := dec.Decode(&doc); err != nil {
+		return nil, err
+	}
+	for k := range doc {
+		if !set[k] {
+			delete(doc, k)
+		}
+	}
+	return doc, nil
+}
 
 // FetchResult is the envelope of a successful fetch. A failed fetch is an
 // error and has no result.
@@ -84,6 +139,10 @@ never printed: body is empty and truncated is true; save it with --output.
              a one-line size hint goes to stderr when the body was cut
   --json     the same document as JSON
   --output   save the whole body to a file; the document leaves body out
+  --fields   print only these envelope fields, comma-separated: url,
+             final_url, status, tier, format, content_type, bytes, truncated,
+             output, body, help. Composes with --json and --output; --plain
+             prints no envelope, so --fields with --plain is a usage error
 
 A failed fetch exits non-zero and says why. So does a page that needs a
 browser (a Cloudflare or JavaScript challenge page): this command cannot pass
@@ -116,6 +175,7 @@ A response body larger than the cap is an error, never a truncated page.`,
 	cmd.Flags().BoolVar(&fetchJSON, "json", false, "Output as JSON")
 	cmd.Flags().IntVar(&fetchHead, "head", defaultHead, "Print the first N bytes of the body, cut on a character boundary")
 	cmd.Flags().BoolVar(&fetchFull, "full", false, "Print the whole body; cannot be used with --head")
+	cmd.Flags().StringVar(&fetchFields, "fields", "", "Comma-separated envelope fields to print: url,final_url,status,tier,format,content_type,bytes,truncated,output,body,help (default all)")
 	return cmd
 }
 
@@ -127,6 +187,16 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	}
 	if fetchFull && cmd.Flags().Changed("head") {
 		return fmt.Errorf("invalid argument %q for \"--head\" flag: --head and --full cannot be used together", fmt.Sprint(fetchHead))
+	}
+	// Also before the URL: a bad field list never costs a request, and under
+	// --plain it never writes the --output file. --plain prints no envelope,
+	// so a selection there would be silently ignored -- a usage error instead.
+	fields, err := parseFetchFields(fetchFields)
+	if err != nil {
+		return err
+	}
+	if fields != nil && !fetchJSON && !GlobalAXIOutput {
+		return fmt.Errorf("invalid argument %q for \"--fields\" flag: --fields and --plain cannot be used together: --plain prints no envelope", fetchFields)
 	}
 	rawURL := args[0]
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
@@ -174,7 +244,7 @@ func runFetch(cmd *cobra.Command, args []string) error {
 			_, err := fmt.Fprintf(w, "Saved %d bytes [HTTP %d via %s, %s] -> %s\n", out.Bytes, res.Status, res.Tier, fetchFormat, fetchOutput)
 			return err
 		}
-		return printFetchResult(w, out)
+		return printFetchResult(w, out, fields)
 	}
 
 	limit := fetchHead
@@ -205,22 +275,33 @@ func runFetch(cmd *cobra.Command, args []string) error {
 		out.Help = []string{fetchHelpBinary}
 	}
 	out.Body = &body
-	return printFetchResult(w, out)
+	return printFetchResult(w, out, fields)
 }
 
 // printFetchResult writes the envelope as JSON under --json and as TOON
-// otherwise. help[] belongs to TOON only.
-func printFetchResult(w io.Writer, out FetchResult) error {
+// otherwise, narrowed to fields when --fields named a set. help[] belongs to
+// TOON only, so it is dropped before selection, never selectable under --json.
+func printFetchResult(w io.Writer, out FetchResult, fields map[string]bool) error {
 	if fetchJSON {
 		out.Help = nil
+	}
+	var v any = out
+	if fields != nil {
+		doc, err := selectFetchFields(out, fields)
+		if err != nil {
+			return err
+		}
+		v = doc
+	}
+	if fetchJSON {
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
-		return enc.Encode(out)
+		return enc.Encode(v)
 	}
 	// Assembled first and written once, so a failed encode never leaves half
 	// a document on stdout.
 	var doc bytes.Buffer
-	if err := output.EncodeAXI(&doc, out); err != nil {
+	if err := output.EncodeAXI(&doc, v); err != nil {
 		return err
 	}
 	_, err := w.Write(doc.Bytes())
