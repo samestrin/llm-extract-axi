@@ -91,6 +91,15 @@ func (a args) flagInt(out []string, k, flag string) []string {
 	return out
 }
 
+// flagBool appends flag only when k is true; a false or absent boolean adds
+// nothing, so the CLI's default stands.
+func (a args) flagBool(out []string, k, flag string) []string {
+	if b, _ := a[k].(bool); b {
+		out = append(out, flag)
+	}
+	return out
+}
+
 func (a args) flagStr(out []string, k, flag string) []string {
 	if s := a.str(k); s != "" {
 		out = append(out, flag, s)
@@ -114,12 +123,14 @@ func need(a args, keys ...string) error {
 var tools = []tool{
 	{
 		name:        "fetch",
-		description: "Fetch a URL and return the body. A challenge page or failed fetch is an error, not an empty result.",
+		description: "Fetch a URL and return a TOON envelope: url, status, content_type, bytes (the whole body size), truncated, and body (the first 4096 bytes, cut on a character boundary). Use head to set the cut or full for the whole body. A challenge page or failed fetch is an error, not an empty result.",
 		schema: schema([]string{"url"}, map[string]any{
 			"url":        prop("string", "URL to fetch"),
 			"timeout":    prop("integer", "Per-attempt timeout in seconds"),
 			"retries":    prop("integer", "Retries on connection errors and 5xx"),
 			"user_agent": prop("string", "Override the request User-Agent"),
+			"head":       prop("integer", "Return the first N bytes of the body instead of 4096; 1 or more, and not together with full"),
+			"full":       prop("boolean", "Return the whole body; not together with head"),
 		}),
 		build: func(a args) ([]string, error) {
 			if err := need(a, "url"); err != nil {
@@ -128,7 +139,11 @@ var tools = []tool{
 			out := []string{"fetch", a.str("url")}
 			out = a.flagInt(out, "timeout", "--timeout")
 			out = a.flagInt(out, "retries", "--retries")
-			return a.flagStr(out, "user_agent", "--user-agent"), nil
+			out = a.flagStr(out, "user_agent", "--user-agent")
+			// head and full pass through unchanged; the CLI rejects a bad
+			// cut or the combination, so the server holds no logic of its own.
+			out = a.flagInt(out, "head", "--head")
+			return a.flagBool(out, "full", "--full"), nil
 		},
 	},
 	{

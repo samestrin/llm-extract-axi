@@ -7,10 +7,10 @@ description: Pull only what is needed from a large file or a web page instead of
 
 Run `llm-extract` with no arguments to see where the binary is and which commands reach outside.
 
-- `llm-extract fetch <url>` fetches a URL. Network, no model.
+- `llm-extract fetch <url>` fetches a URL. Network, no model. Prints a TOON envelope: `bytes` is the whole-body size, `truncated` says the body was cut, and `body` holds the first 4096 bytes. `--head N` sets the cut, `--full` returns the whole body, `--fields a,b` selects envelope fields, `--output <file>` saves the whole body to a file.
 - `llm-extract extract-links --url <url> [--context <text>]` lists and ranks links. Network; a model only with --context.
 - `llm-extract extract-relevant --path <file|dir|url> --context <text>` reduces content to what the context needs. Always a model; network only for a URL.
 
-Output is TOON by default; `--plain` prints human-readable text.
+Output is TOON by default; `--plain` prints human-readable text (for `fetch`, the body bytes alone, still cut unless `--full`).
 
 A failed fetch or model call exits non-zero with the reason on stdout in the active output format. Treat that as a failure, never as an empty result.

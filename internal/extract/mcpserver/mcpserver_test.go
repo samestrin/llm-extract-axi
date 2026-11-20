@@ -33,7 +33,10 @@ func text(t *testing.T, raw any) string {
 }
 
 // Defends the argument mapping: a tool argument that silently stops reaching
-// the CLI would change what is fetched without any error.
+// the CLI would change what is fetched without any error. The head/full cases
+// defend epic 10's pass-through: an MCP caller must be able to read past the
+// default 4096-byte cut, and a false full must not add the flag. head+full is
+// passed through unchanged; rejecting it is the CLI's job, not the server's.
 func TestBuildMapsArguments(t *testing.T) {
 	cases := []struct {
 		tool string
@@ -42,6 +45,14 @@ func TestBuildMapsArguments(t *testing.T) {
 	}{
 		{"fetch", `{"url":"http://x","timeout":5,"retries":0,"user_agent":"ua"}`,
 			[]string{"fetch", "http://x", "--timeout", "5", "--retries", "0", "--user-agent", "ua"}},
+		{"fetch", `{"url":"http://x","head":10}`,
+			[]string{"fetch", "http://x", "--head", "10"}},
+		{"fetch", `{"url":"http://x","full":true}`,
+			[]string{"fetch", "http://x", "--full"}},
+		{"fetch", `{"url":"http://x","full":false}`,
+			[]string{"fetch", "http://x"}},
+		{"fetch", `{"url":"http://x","head":10,"full":true}`,
+			[]string{"fetch", "http://x", "--head", "10", "--full"}},
 		{"extract_links", `{"url":"http://x","context":"c","timeout":3}`,
 			[]string{"extract-links", "--url", "http://x", "--context", "c", "--timeout", "3"}},
 		{"extract_relevant", `{"path":"p","context":"c","concurrency":4}`,
