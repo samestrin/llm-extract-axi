@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -142,7 +143,9 @@ never printed: body is empty and truncated is true; save it with --output.
   --fields   print only these envelope fields, comma-separated: url,
              final_url, status, tier, format, content_type, bytes, truncated,
              output, body, help. Composes with --json and --output; --plain
-             prints no envelope, so --fields with --plain is a usage error
+             prints no envelope, so --fields with --plain is a usage error.
+             A selection where no named field is present in this run is an
+             error naming the fields, never an empty document
 
 A failed fetch exits non-zero and says why. So does a page that needs a
 browser (a Cloudflare or JavaScript challenge page): this command cannot pass
@@ -281,6 +284,8 @@ func runFetch(cmd *cobra.Command, args []string) error {
 // printFetchResult writes the envelope as JSON under --json and as TOON
 // otherwise, narrowed to fields when --fields named a set. help[] belongs to
 // TOON only, so it is dropped before selection, never selectable under --json.
+// A selection where no named field is present is an error, not an empty
+// document.
 func printFetchResult(w io.Writer, out FetchResult, fields map[string]bool) error {
 	if fetchJSON {
 		out.Help = nil
@@ -290,6 +295,9 @@ func printFetchResult(w io.Writer, out FetchResult, fields map[string]bool) erro
 		doc, err := selectFetchFields(out, fields)
 		if err != nil {
 			return err
+		}
+		if len(doc) == 0 {
+			return errEmptyFetchSelection(fields)
 		}
 		v = doc
 	}
@@ -306,6 +314,38 @@ func printFetchResult(w io.Writer, out FetchResult, fields map[string]bool) erro
 	}
 	_, err := w.Write(doc.Bytes())
 	return err
+}
+
+// fetchAbsentWhy explains why a selectable field can be absent from a run.
+// The other envelope fields are always present on a successful fetch.
+var fetchAbsentWhy = map[string]string{
+	"output": "output is set only with --output <file>",
+	"body":   "body is left out when --output <file> saves it",
+	"help":   "help appears only when the body is cut or not text, and never under --json",
+}
+
+// errEmptyFetchSelection reports a --fields selection where every named
+// field is absent from this run. An empty document would exit 0 with zero
+// bytes on stdout under TOON and {} under --json: success with no result,
+// and the two formats disagreeing about whether output exists. The flag
+// values are valid, so this is a run error (exit 1), not a usage error; the
+// wording deliberately carries none of cobra's usage markers.
+func errEmptyFetchSelection(set map[string]bool) error {
+	var names, whys []string
+	for _, n := range fetchFieldNames {
+		if !set[n] {
+			continue
+		}
+		names = append(names, n)
+		if why := fetchAbsentWhy[n]; why != "" {
+			whys = append(whys, why)
+		}
+	}
+	msg := fmt.Sprintf("--fields %s: none of the selected fields are present in this result", strings.Join(names, ","))
+	if len(whys) > 0 {
+		msg += ": " + strings.Join(whys, "; ")
+	}
+	return errors.New(msg)
 }
 
 // headCut returns the first n bytes of body. A UTF-8 body is cut on a rune
