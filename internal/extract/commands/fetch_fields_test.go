@@ -280,15 +280,18 @@ func TestFetchFieldsEmptySelectionIsError(t *testing.T) {
 		url  string
 		args []string
 		want string
+		// wantSpec is the selection list the message must name: the reason
+		// text alone also contains the field name, so only the list pins it.
+		wantSpec string
 		// jsonOnly marks a case that exists only under --json: help on a
 		// cut body IS present under TOON, so only --json drops it.
 		jsonOnly bool
 	}{
-		{"output without --output", small, []string{"--fields", "output"}, "output", false},
-		{"help on an uncut body", small, []string{"--fields", "help"}, "help", false},
-		{"help under --json", cut, []string{"--fields", "help"}, "help", true},
-		{"body under --output", small, []string{"--output", outFile, "--fields", "body"}, "body", false},
-		{"two absent fields", small, []string{"--fields", "output,help"}, "output", false},
+		{"output without --output", small, []string{"--fields", "output"}, "output", "output", false},
+		{"help on an uncut body", small, []string{"--fields", "help"}, "help", "help", false},
+		{"help under --json", cut, []string{"--fields", "help"}, "help", "help", true},
+		{"body under --output", small, []string{"--output", outFile, "--fields", "body"}, "body", "body", false},
+		{"two absent fields", small, []string{"--fields", "output,help"}, "output", "output,help", false},
 	}
 	for _, c := range cases {
 		for _, asJSON := range []bool{false, true} {
@@ -314,8 +317,8 @@ func TestFetchFieldsEmptySelectionIsError(t *testing.T) {
 					t.Errorf("document does not say error: %v", doc)
 				}
 				msg := fmt.Sprint(doc["message"])
-				if !strings.Contains(msg, c.want) || !strings.Contains(msg, "--fields") {
-					t.Errorf("message does not name the selection and %q: %q", c.want, msg)
+				if !strings.Contains(msg, "--fields "+c.wantSpec+":") || !strings.Contains(msg, c.want) {
+					t.Errorf("message does not name the selection %q and %q: %q", c.wantSpec, c.want, msg)
 				}
 			})
 		}
