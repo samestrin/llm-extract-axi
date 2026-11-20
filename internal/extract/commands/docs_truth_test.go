@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,6 +43,48 @@ func TestDocsMatchTheTOONDefault(t *testing.T) {
 		} {
 			if strings.Contains(s, stale) {
 				t.Errorf("%s claims %q, but TOON with help[] is the default", doc, stale)
+			}
+		}
+	}
+}
+
+// TestDocsMatchTheFetchEnvelope defends the epic 10 fetch truth: a successful
+// fetch is a TOON envelope with the whole-body size, a truncated flag and
+// help[] naming --full, and --full returns the whole body. No doc may still
+// describe a successful fetch as a raw-byte pipe or say no command has
+// --full. The probes run first, so a doc fails only while the code agrees
+// with the contract the docs must state.
+func TestDocsMatchTheFetchEnvelope(t *testing.T) {
+	body := strings.Repeat("0123456789abcdef\n", 512) // 8704 bytes, over the 4096 default
+	srv := pageServer(t, http.StatusOK, body)
+
+	code, doc, out := runDoc(t, "fetch", srv.URL)
+	if code != 0 || doc["truncated"] != true || !strings.Contains(out, fmt.Sprintf("bytes: %d", len(body))) {
+		t.Fatalf("default fetch is not a cut envelope with the whole-body size; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+	if b, _ := doc["body"].(string); len(b) >= len(body) {
+		t.Fatalf("default fetch did not cut the body; the probe, not the docs, is wrong:\n%s", out)
+	}
+	if !strings.Contains(out, "--full") {
+		t.Fatalf("a cut envelope's help[] does not name --full; the probe, not the docs, is wrong:\n%s", out)
+	}
+	code, doc, out = runDoc(t, "fetch", srv.URL, "--full")
+	if code != 0 || doc["truncated"] != false || doc["body"] != body {
+		t.Fatalf("--full did not return the whole body; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+
+	for _, path := range []string{"README.md", "docs/output.md", "docs/axi-audit.md", "docs/axi-catalog-entry.yaml"} {
+		s := readRepoFile(t, path)
+		for _, stale := range []string{
+			"fetch is not TOON", "`fetch` is not TOON",
+			"no command has --full", "no command has `--full`",
+			"stays the raw body",
+			"prints the raw body",
+			"fetch prints the whole body",
+			"byte for byte in every encoding mode",
+		} {
+			if strings.Contains(s, stale) {
+				t.Errorf("%s claims %q, but fetch prints a TOON envelope with --head and --full", path, stale)
 			}
 		}
 	}

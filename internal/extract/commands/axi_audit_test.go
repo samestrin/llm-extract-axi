@@ -100,21 +100,34 @@ func TestAXIAuditNamedTestsExist(t *testing.T) {
 	}
 }
 
-// Defends the epic 09 truth in the admission evidence: only Exceptions 1 and
-// 2 remain, each with its reason; Exceptions 3 (errors on stderr), 4 (no
-// Codex or OpenCode target) and 5 (help[] is --axi only) described behaviour
-// the code no longer has and must not come back as numbered exceptions. The
-// no-session-end reason and the exit-2 compliance statement must stay.
+// Defends the epic 10 truth in the admission evidence: Exception 1 (fetch
+// is not TOON) and the fetch half of Exception 2 (no --full) are withdrawn —
+// fetch prints a TOON envelope with a size hint, --head and --full — and must
+// not come back as numbered exceptions. Exception 2 survives only as the
+// model-input cut on extract-relevant and extract-links --context, stated as
+// an input limit. Exceptions 3 (errors on stderr), 4 (no Codex or OpenCode
+// target) and 5 (help[] is --axi only) described behaviour the code no longer
+// has and stay withdrawn. The no-session-end reason and the exit-2
+// compliance statement must stay.
 func TestAXIAuditListsOnlyTheLiveExceptions(t *testing.T) {
 	audit := readRepoFile(t, auditPath)
 	for _, want := range []string{
-		"Exception 1", "byte pipe", // fetch stays a byte pipe, with its reason
-		"Exception 2", "--full", // no --full, with its reason
+		"Exception 2", "input limit", // the model-input cut, stated as an input limit
+		"--head", "--full", // fetch's output cut and its way to get everything
 		"session-end", "session state", // the kept no-session-end reason
 		"not listed as a gap", // exit 2 is compliant, not an exception
 	} {
 		if !strings.Contains(audit, want) {
 			t.Errorf("%s no longer states %q", auditPath, want)
+		}
+	}
+	for _, stale := range []string{
+		"Exception 1:", // withdrawn: fetch prints a TOON envelope
+		"fetch is not TOON", "`fetch` is not TOON",
+		"no command has --full", "no command has `--full`",
+	} {
+		if strings.Contains(audit, stale) {
+			t.Errorf("%s still states %q; epic 10 withdrew it", auditPath, stale)
 		}
 	}
 	withdrawn := regexp.MustCompile(`Exception [3-9]`)
@@ -129,12 +142,12 @@ func TestAXIAuditListsOnlyTheLiveExceptions(t *testing.T) {
 	if m == nil {
 		t.Fatalf("%s has no single-line exception field", catalogEntryPath)
 	}
-	for _, want := range []string{"(1)", "(2)", "session-end"} {
+	for _, want := range []string{"(2)", "input limit", "session-end"} {
 		if !strings.Contains(m[1], want) {
 			t.Errorf("%s's exception field no longer states %q", catalogEntryPath, want)
 		}
 	}
-	for _, gone := range []string{"(3)", "(4)", "(5)"} {
+	for _, gone := range []string{"(1)", "(3)", "(4)", "(5)"} {
 		if strings.Contains(m[1], gone) {
 			t.Errorf("%s's exception field still lists %s; that exception was withdrawn", catalogEntryPath, gone)
 		}
