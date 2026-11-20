@@ -3,6 +3,8 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -71,6 +73,33 @@ func TestDocsSayErrorsGoToStdout(t *testing.T) {
 	}
 	if s := readRepoFile(t, "integrations/claude-code/skill/SKILL.md"); !strings.Contains(s, "on stdout") {
 		t.Error("the Agent Skill does not say the failure reason is on stdout")
+	}
+}
+
+// TestSkillDescribesTheFetchEnvelope defends the epic 10 skill text: fetch
+// now prints a capped TOON envelope, so an Agent Skill that still describes
+// fetch as "fetches a URL" would leave an agent with a 4096-byte cut and no
+// idea how to get the rest. The probe first proves the live behaviour (a page
+// over 4096 bytes comes back truncated with help[] naming --full), then fails
+// on a skill that does not name the envelope and the flags that control it.
+func TestSkillDescribesTheFetchEnvelope(t *testing.T) {
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("a", 5000)))
+	}))
+	t.Cleanup(srv.Close)
+	var out, errb bytes.Buffer
+	if code := run([]string{"fetch", srv.URL}, &out, &errb); code != 0 {
+		t.Fatalf("fetch exited %d: %s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "truncated: true") || !strings.Contains(out.String(), "--full") {
+		t.Fatalf("a 5000-byte page is not a truncated envelope with help[] naming --full; the probe, not the skill, is wrong:\n%s", out.String())
+	}
+	s := readRepoFile(t, "integrations/claude-code/skill/SKILL.md")
+	for _, want := range []string{"truncated", "4096", "--head", "--full", "--fields", "--output"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("the Agent Skill does not name %q, so an agent cannot learn the fetch envelope from it", want)
+		}
 	}
 }
 

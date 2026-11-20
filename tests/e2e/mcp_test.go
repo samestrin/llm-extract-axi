@@ -52,7 +52,10 @@ func TestMCPListsTools(t *testing.T) {
 	}
 }
 
-// Defends the payload: fetch through MCP returns the page body the CLI fetched.
+// Defends the payload: fetch through MCP returns the CLI's TOON envelope with
+// the page body in body, the whole-body size in bytes and truncated false for
+// a page under the cut. A server that injects a flag or rewrites the output
+// changes these strings.
 func TestMCPFetchReturnsBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("hello from the fake page"))
@@ -63,9 +66,86 @@ func TestMCPFetchReturnsBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.IsError || !strings.Contains(resultText(r), "hello from the fake page") {
-		t.Errorf("unexpected result: err=%v %q", r.IsError, resultText(r))
+	got := resultText(r)
+	for _, want := range []string{"body: hello from the fake page\n", "bytes: 24\n", "truncated: false\n"} {
+		if r.IsError || !strings.Contains(got, want) {
+			t.Errorf("want %q in the envelope: err=%v %q", want, r.IsError, got)
+		}
 	}
+}
+
+// Defends epic 10's head/full pass-through end to end: a page over the
+// 4096-byte default cut comes back truncated with help[] naming --full, full
+// returns the whole body, head sets the cut, and head with full surfaces the
+// CLI's usage error as an MCP error. Without the pass-through an MCP caller
+// would be stuck with the cut and no way to read the rest.
+func TestMCPFetchHeadAndFull(t *testing.T) {
+	body := strings.Repeat("A", 6000) + "TAIL-MARKER"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	call := func(t *testing.T, extra map[string]any) *mcp.CallToolResult {
+		t.Helper()
+		args := map[string]any{"url": srv.URL}
+		for k, v := range extra {
+			args[k] = v
+		}
+		r, err := connect(t).CallTool(context.Background(), &mcp.CallToolParams{Name: "fetch", Arguments: args})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	t.Run("default cuts at 4096", func(t *testing.T) {
+		r := call(t, nil)
+		got := resultText(r)
+		if r.IsError {
+			t.Fatalf("default fetch was an error: %s", got)
+		}
+		for _, want := range []string{"body: " + strings.Repeat("A", 4096) + "\n", "bytes: 6011\n", "truncated: true\n", "--full"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("want %q in the envelope, got:\n%s", want, got)
+			}
+		}
+		if strings.Contains(got, "TAIL-MARKER") {
+			t.Error("the default cut leaked the tail of the body")
+		}
+	})
+
+	t.Run("full returns the whole body", func(t *testing.T) {
+		r := call(t, map[string]any{"full": true})
+		got := resultText(r)
+		if r.IsError {
+			t.Fatalf("full fetch was an error: %s", got)
+		}
+		for _, want := range []string{"body: " + body + "\n", "truncated: false\n"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("want %q in the envelope, got:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("head sets the cut", func(t *testing.T) {
+		r := call(t, map[string]any{"head": 10})
+		got := resultText(r)
+		if r.IsError {
+			t.Fatalf("head fetch was an error: %s", got)
+		}
+		for _, want := range []string{"body: AAAAAAAAAA\n", "truncated: true\n"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("want %q in the envelope, got:\n%s", want, got)
+			}
+		}
+	})
+
+	t.Run("head with full is the CLI's usage error", func(t *testing.T) {
+		r := call(t, map[string]any{"head": 10, "full": true})
+		if !r.IsError || !strings.Contains(resultText(r), "--head and --full cannot be used together") {
+			t.Errorf("want the CLI usage error, got err=%v %q", r.IsError, resultText(r))
+		}
+	})
 }
 
 // Defends the AGENTS.md rule: a failed fetch is an error result through MCP,
