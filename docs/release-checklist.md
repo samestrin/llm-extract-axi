@@ -2,7 +2,7 @@
 
 Steps for cutting a release of `llm-extract`. Run steps 1 to 4 from the repository root on the commit that will be tagged; steps 5 and 6 follow the published release.
 
-Two of them keep the two recorded numbers honest: the demo GIF and the performance table. Both show what the release binary does. The GIF is re-rendered when the release changes something it shows; the table is re-timed on every release, so its version line always names one.
+Two of them keep the two recorded numbers honest: the demo GIF and the performance table. Both show what a release binary does. The GIF is re-rendered when the release changes something it shows; the table is re-timed when the release changes something it times, and its version line always names the build it measured.
 
 ## 1. Green before a tag
 
@@ -61,9 +61,9 @@ The `release` workflow tests the tagged commit, builds `llm-extract` and `llm-ex
 
 - [ ] A checksum mismatch or a failed download still installs nothing (the installer's own tests cover this, but the published assets are what it reads).
 
-## 6. Re-time the released binary
+## 6. Re-time the released binary when the timed path changed
 
-The `## Performance` table in the README is generated, never typed. It is re-run after the tag, against the binary the release published, so its Version line names the release. Run before the tag, `perf.sh` stamps a `git describe` version such as `1.0.1-23-g8f6fbb7`, which names no release.
+The `## Performance` table in the README is generated, never typed. Re-time it after the tag when the release changed start-up or how `extract-links` fetches and parses a page (the three timed cases); a release that changed neither keeps the table, whose Version line still names the build it measured. Re-run it against the binary the release published, so its Version line names a release. Run before the tag, `perf.sh` stamps a `git describe` version such as `1.0.1-23-g8f6fbb7`, which names no release.
 
 Download the release binary for the machine that will be named in the table, then:
 
@@ -71,7 +71,7 @@ Download the release binary for the machine that will be named in the table, the
 ./benchmarks/perf.sh -bin path/to/llm-extract-<os>-<arch>
 ```
 
-- [ ] The table's **Version** line reads `llm-extract <version>`, the tag just pushed, with no `-N-g<hash>` or `-dirty` suffix.
+- [ ] When re-timed, the table's **Version** line reads `llm-extract <version>`, the tag just pushed, with no `-N-g<hash>` or `-dirty` suffix.
 - [ ] `benchmarks/results-performance.json` and `benchmarks/results-performance.md` are rewritten, not hand-edited.
 - [ ] The table names the version, the date, the machine and the method.
 - [ ] Every figure in the README's `## Performance` table matches the generated table.

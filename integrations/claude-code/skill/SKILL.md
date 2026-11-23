@@ -5,12 +5,12 @@ description: Pull only what is needed from a large file or a web page instead of
 
 # llm-extract
 
-Run `llm-extract` with no arguments to see where the binary is and which commands reach outside.
+Run `llm-extract` with no arguments to see where the binary is and which commands reach outside. If `llm-extract` is not on PATH, install it first: `curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | bash` puts it in `~/.local/bin`; this skill only calls it by name.
 
-- `llm-extract fetch <url>` fetches a URL. Network, no model. Prints a TOON envelope: `bytes` is the whole-body size, `truncated` says the body was cut, and `body` holds the first 4096 bytes. `--head N` sets the cut, `--full` returns the whole body, `--fields a,b` selects envelope fields, `--output <file>` saves the whole body to a file.
+- `llm-extract fetch <url>` fetches a URL. Network, no model. Prints a TOON envelope: `bytes` is the whole-body size, `truncated` says the body was cut, and `body` holds the first 4096 bytes. `--head N` sets the cut, `--full` returns the whole body, `--fields a,b` selects envelope fields, `--output <file>` saves the whole body to a file. A body that is not UTF-8 text (an image, a PDF) comes back as `body: ""` with `truncated: true`; save its bytes with `--output <file>`.
 - `llm-extract extract-links --url <url> [--context <text>]` lists and ranks links. Network; a model only with --context.
 - `llm-extract extract-relevant --path <file|dir|url> --context <text>` reduces content to what the context needs. Always a model; network only for a URL.
 
 Output is TOON by default; `--plain` prints human-readable text (for `fetch`, the body bytes alone, still cut unless `--full`).
 
-A failed fetch or model call exits non-zero with the reason on stdout in the active output format. Treat that as a failure, never as an empty result.
+A failed fetch or model call exits non-zero with `error` and the reason on stdout in the active output format; it is never reported as an empty result. A failed run may still carry results beside `error` (the unranked links when `extract-links --context` has no API key, the files a directory run finished): treat them as partial. Exit 2 means the command or its configuration is wrong (a bad flag, no API key): fix that before running again. Exit 1 is a run that failed, such as a fetch the server refused; the `help` lines name the next step.

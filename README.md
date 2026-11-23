@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/inst
 
 If `~/.local/bin` is not on `PATH`, the installer says so and prints the `export` line to add.
 
-To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing`, and copy the binary onto `PATH`.
+To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing` (on macOS, `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`), and copy the binary onto `PATH`.
 
 ### go install
 
@@ -77,7 +77,10 @@ The same skill is also published for the `skills` CLI:
 
 ```bash
 npx skills add samestrin/llm-extract-axi --skill llm-extract
+npx skills add samestrin/llm-extract-axi --skill llm-extract --agent claude-code -y   # no prompts
 ```
+
+The skill only runs `llm-extract` by name, so install the binary first (above) and keep it on `PATH`.
 
 ### Upgrade
 
@@ -94,12 +97,14 @@ curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/inst
 llm-extract fetch https://example.com
 ```
 
-Real output (trimmed):
+Real output (the `body` string trimmed here; every field is shown):
 
 ```
 body: "<!doctype html><html lang=en><head><meta charset=utf-8>...<title>Example Domain</title>..."
 bytes: 577
 content_type: text/html; charset=utf-8
+final_url: "https://example.com"
+format: raw
 status: 200
 tier: direct
 truncated: false
@@ -111,8 +116,8 @@ url: "https://example.com"
 Then ask for only what you need instead of the whole page:
 
 ```bash
-llm-extract extract-links --url https://example.com/docs
-llm-extract extract-relevant --path https://example.com/docs --context "installation steps"
+llm-extract extract-links --url https://go.dev/doc/
+llm-extract extract-relevant --path https://go.dev/doc/install --context "installation steps"
 ```
 
 ## Usage
@@ -158,19 +163,19 @@ On `fetch`, the flags `--max-bytes`, `--timeout`, `--retries` and `--user-agent`
 
 ## Output and exit codes
 
-Output modes: TOON by default, `--plain` for human-readable text, `--json` for structured output, and `--min` for a token-optimized form. Every error is printed on stdout in the active format — a TOON `error`/`message`/`help[]` document by default, one JSON document under `--json`, an `Error: ...` line under `--plain` — and stderr stays empty; a failed `fetch` included. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and exits non-zero (a failed `extract-links --context` ranking keeps its links and `total` beside the `error`). A result built from a cut model input carries a `truncated` note. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: `--plain` prints a short summary, while the default TOON and `--json` print one structured document without the passages.
+Output modes: TOON by default, `--plain` for human-readable text, `--json` for structured output, and `--min` for a token-optimized form. Every error is printed on stdout in the active format — a TOON `error`/`message`/`help[]` document by default, one JSON document under `--json`, an `Error: ...` line under `--plain` (an error carried inside a result, such as a failed `--context` ranking printed beside its links, is that result's `ERROR: ...` line) — and stderr stays empty; a failed `fetch` included. A successful run that finds nothing exits 0 with `total: 0` and a `message`; a failed run carries `error` and exits non-zero (a failed `extract-links --context` ranking keeps its links and `total` beside the `error`). A result built from a cut model input carries a `truncated` note. When a model ran, the structured output reports `model` and `bytes_sent`. With `extract-relevant -o FILE` the extraction goes to the file: `--plain` prints a short summary, while the default TOON and `--json` print one structured document without the passages.
 
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a rejected flag value such as `fetch --format text` or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a rejected flag value such as `fetch --format text`, `fetch --head 0`, `--head` with `--full`, `--fields` with `--plain` or an unknown `--fields` name, or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context`; [docs/output.md](docs/output.md#exit-codes) has the full list |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
 
 ## Performance
 
-Generated by [`benchmarks/perf.sh`](benchmarks/perf.sh) from [`benchmarks/results-performance.json`](benchmarks/results-performance.json). The script measures a release binary offline, with the pages served on `127.0.0.1`; a new measurement rewrites the JSON and the table below, so no figure is typed by hand.
+Generated by [`benchmarks/perf.sh`](benchmarks/perf.sh) from [`benchmarks/results-performance.json`](benchmarks/results-performance.json). The script measures a release binary offline, with the pages served on `127.0.0.1`; a new measurement rewrites the JSON and the table below, so no figure is typed by hand. The table is re-timed when a release changes what it times (start-up, or `extract-links` reading a page), so its Version line can name an older build than the latest release; it names the build that was measured.
 
 - **Version:** llm-extract 1.0.1-23-g8f6fbb7
 - **Date:** 2026-11-13

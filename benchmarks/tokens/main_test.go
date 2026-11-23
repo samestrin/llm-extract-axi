@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -197,5 +198,90 @@ func TestRunFailsOnMissingFixtureOrBinary(t *testing.T) {
 	}
 	if _, err := run("no-such-binary", fixture, &strings.Builder{}); err == nil {
 		t.Error("missing binary did not fail")
+	}
+}
+
+// tokenResults is benchmarks/results-tokens.json: the committed source of
+// every token figure the README and the catalog entry quote.
+type tokenResults struct {
+	Version  string `json:"version"`
+	Date     string `json:"date"`
+	Counter  counts `json:"counter"`
+	Tiktoken struct {
+		Cl100k counts `json:"cl100k_base"`
+		O200k  counts `json:"o200k_base"`
+	} `json:"tiktoken"`
+}
+
+type counts struct {
+	Raw int `json:"raw"`
+	AXI int `json:"axi"`
+}
+
+func readResults(t *testing.T) tokenResults {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "results-tokens.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r tokenResults
+	if err := json.Unmarshal(b, &r); err != nil {
+		t.Fatalf("results-tokens.json: %v", err)
+	}
+	return r
+}
+
+// Defends the quoted token counts (EST-8204 item 12). The v2.1.0 tag shipped
+// 1435 in the catalog entry after the output had shrunk to 1432, because the
+// figures lived only in prose and the test checked only axi < raw. Now the
+// committed results must equal a fresh run, and every place that quotes them
+// must quote the committed results.
+func TestQuotedTokenCountsMatchARun(t *testing.T) {
+	res, err := run(builtBinary(t), fixture, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := readResults(t)
+	if r.Counter.Raw != res.Raw || r.Counter.AXI != res.AXI {
+		t.Errorf("results-tokens.json counter is %d/%d, a run gives %d/%d; re-run ./benchmarks/tokens.sh and update it",
+			r.Counter.Raw, r.Counter.AXI, res.Raw, res.AXI)
+	}
+	ratio := fmt.Sprintf("%.1fx", float64(r.Counter.Raw)/float64(r.Counter.AXI))
+	readme, err := os.ReadFile(filepath.Join("..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("raw page      %d tokens", r.Counter.Raw),
+		fmt.Sprintf("--axi output  %d tokens", r.Counter.AXI),
+		"ratio         " + ratio,
+		fmt.Sprintf("%d vs %d tokens with `cl100k_base`", r.Tiktoken.Cl100k.Raw, r.Tiktoken.Cl100k.AXI),
+		fmt.Sprintf("%d vs %d with `o200k_base`", r.Tiktoken.O200k.Raw, r.Tiktoken.O200k.AXI),
+	} {
+		if !strings.Contains(string(readme), want) {
+			t.Errorf("benchmarks/README.md does not quote %q from results-tokens.json", want)
+		}
+	}
+	entry, err := os.ReadFile(filepath.Join("..", "..", "docs", "axi-catalog-entry.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	comma := func(n int) string {
+		s := fmt.Sprint(n)
+		if len(s) > 3 {
+			s = s[:len(s)-3] + "," + s[len(s)-3:]
+		}
+		return s
+	}
+	for _, want := range []string{
+		fmt.Sprintf("%s vs %s", comma(r.Counter.AXI), comma(r.Counter.Raw)),
+		fmt.Sprintf("%d tokens against %d", r.Counter.AXI, r.Counter.Raw),
+		fmt.Sprintf("%d raw-page tokens", r.Counter.Raw),
+		fmt.Sprintf("vs %d `extract-links --axi` tokens", r.Counter.AXI),
+		ratio,
+	} {
+		if !strings.Contains(string(entry), want) {
+			t.Errorf("docs/axi-catalog-entry.yaml does not quote %q from results-tokens.json", want)
+		}
 	}
 }

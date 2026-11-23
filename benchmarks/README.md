@@ -18,7 +18,9 @@ ratio         3.0x (raw / --axi)
 
 `llm-extract extract-links --axi`, in its default heuristic mode, gives an agent every link on the page, ranked, with its text, score and section, in **3.0x fewer tokens** than the page itself.
 
-Measured on 2026-11-11 with the counter described below (1435 tokens then) and re-run on 2026-11-20 at `v2.1.0`: the shorter `help[]` line from `v2.0.0` (it names `<links[0].href>` instead of quoting the link) took 3 tokens off; the ratio is unchanged. Before `context` left the default row, checked separately against tiktoken: 4503 vs 1733 tokens with `cl100k_base`, 4527 vs 1740 with `o200k_base`, a 2.60 ratio both times.
+Measured on 2026-11-11 with the counter described below (1435 tokens then) and re-run on 2026-11-20 at `v2.1.0`: the shorter `help[]` line from `v2.0.0` (it names `<links[0].href>` instead of quoting the link) took 3 tokens off; the ratio is unchanged. Re-counted on 2026-11-23 with tiktoken 0.14.0 on the same output: 4503 vs 1517 tokens with `cl100k_base`, 4527 vs 1524 with `o200k_base`, a 2.97 ratio both times.
+
+Every figure above comes from [`results-tokens.json`](results-tokens.json), which names the version and date it was measured on. `TestQuotedTokenCountsMatchARun` (`benchmarks/tokens/main_test.go`) fails when a fresh run of the counter disagrees with that file, or when this page or the catalog entry quotes anything else. The tiktoken counts need the `tiktoken` Python package and its vocabulary, so CI does not re-run them; re-count them by hand when the output changes.
 
 ## Rerun it
 
@@ -43,7 +45,7 @@ A failed `extract-links`, or a page with no links, is an error with a non-zero e
 
 ## The counter
 
-The count is the number of pieces `cl100k_base`'s split pattern cuts the text into, the step GPT-4's tokenizer takes before its BPE merges. A merge never crosses a piece boundary, so each count is a **lower bound** on the real `cl100k_base` count. The real tokenizers read about 6% more on the raw page and 5% more on the `--axi` output, so the ratio barely moves (2.57 here against 2.60 from tiktoken). The ratio is the figure to quote; the absolute counts depend on the tokenizer. Claude's tokenizer is not public, so it is not used.
+The count is the number of pieces `cl100k_base`'s split pattern cuts the text into, the step GPT-4's tokenizer takes before its BPE merges. A merge never crosses a piece boundary, so each count is a **lower bound** on the real `cl100k_base` count. The real tokenizers read about 6% more on both the raw page and the `--axi` output, so the ratio barely moves (2.96 here against 2.97 from tiktoken, on the 2026-11-23 counts in `results-tokens.json`). The ratio is the figure to quote; the absolute counts depend on the tokenizer. Claude's tokenizer is not public, so it is not used.
 
 The loopback address and port appear in every resolved link. They are replaced with `https://docs.example.com` before counting, so every run counts the same text.
 
