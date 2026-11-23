@@ -158,7 +158,17 @@ Configuration is read from environment variables (flags override them):
   FETCH_USER_AGENT    Override the request User-Agent
   FETCH_MAX_BYTES     Maximum response body size in bytes (default 16777216)
 
-A response body larger than the cap is an error, never a truncated page.`,
+A response body larger than the cap is an error, never a truncated page.
+
+Examples:
+  # The envelope, with the first 4096 bytes of the body
+  llm-extract fetch https://go.dev/doc/
+
+  # Only the size and whether the body was cut, as JSON
+  llm-extract fetch https://go.dev/doc/ --fields status,bytes,truncated --json
+
+  # Save the whole body (text or not) to a file
+  llm-extract fetch https://go.dev/doc/ --output page.html`,
 		// Marked as a usage error: cobra's own wording carries no usage
 		// marker, so a missing or extra URL exited 1, as if a retry could help.
 		Args: func(cmd *cobra.Command, args []string) error {
