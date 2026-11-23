@@ -225,7 +225,7 @@ func runFetch(cmd *cobra.Command, args []string) error {
 
 	res := fetch.New(cfg).Fetch(rawURL)
 	if res.Err != nil {
-		return fmt.Errorf("fetch %s: %w", rawURL, res.Err)
+		return &fetchFailure{err: fmt.Errorf("fetch %s: %w", rawURL, res.Err), status: res.Status}
 	}
 
 	out := FetchResult{
@@ -389,6 +389,33 @@ func isTextType(contentType string) bool {
 		return true
 	}
 	return false
+}
+
+// fetchFailure is a fetch that reached no usable page. It carries the HTTP
+// status (0 when no response came back), so the error's help[] can name the
+// fix for this failure instead of only pointing at --help (AXI principle 9).
+type fetchFailure struct {
+	err    error
+	status int
+}
+
+func (f *fetchFailure) Error() string { return f.err.Error() }
+func (f *fetchFailure) Unwrap() error { return f.err }
+
+// nextStep is the one thing most likely to get a page after this failure.
+// Like every help[] line it names flags only, never the URL (#55).
+func (f *fetchFailure) nextStep() string {
+	switch {
+	case errors.Is(f.err, fetch.ErrChallenge):
+		return "This page needs a real browser; llm-extract cannot pass a challenge page, so open it with a browser tool"
+	case errors.Is(f.err, fetch.ErrTooLarge):
+		return "Run again with a larger --max-bytes if the whole body is wanted"
+	case f.status >= 500:
+		return "The server failed; run again later, or with more --retries"
+	case f.status >= 400:
+		return fmt.Sprintf("Check the URL: the server answered HTTP %d, so the same request will fail again", f.status)
+	}
+	return "Check the URL and the network, then run again; raise --timeout or --retries for a slow host"
 }
 
 func init() {

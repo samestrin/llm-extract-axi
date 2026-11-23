@@ -430,6 +430,7 @@ func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
 	doc := map[string]any{"error": true, "message": err.Error()}
 	usage := "Run '" + cmd.CommandPath() + " --help' for usage"
 	var help []string
+	var failed *fetchFailure
 	switch {
 	case strings.Contains(err.Error(), "unknown command "):
 		doc["commands"] = commandNames(cmd)
@@ -446,6 +447,10 @@ func axiErrorDoc(cmd *cobra.Command, err error, code int) map[string]any {
 	// the generic list of flags.
 	case errors.Is(err, errInvalidURL):
 		help = []string{"Pass a URL that starts with http:// or https://", usage}
+	// A failed fetch is a run error, and --help says nothing about a 404 or a
+	// dead host; the failure names its own next step first.
+	case errors.As(err, &failed):
+		help = []string{failed.nextStep(), usage}
 	case code == int(goaxi.ExitUsage):
 		doc["flags"] = flagNames(cmd)
 		if cmd.HasAvailableSubCommands() {

@@ -123,7 +123,7 @@ func need(a args, keys ...string) error {
 var tools = []tool{
 	{
 		name:        "fetch",
-		description: "Fetch a URL and return a TOON envelope: url, status, content_type, bytes (the whole body size), truncated, and body (the first 4096 bytes, cut on a character boundary). Use head to set the cut or full for the whole body. A challenge page or failed fetch is an error, not an empty result.",
+		description: "Fetch a URL and return a TOON envelope: url, status, content_type, bytes (the whole body size), truncated, and body (the first 4096 bytes, cut on a character boundary). Use head to set the cut or full for the whole body; output saves the whole body (including a non-text body, which the envelope leaves empty) to a file path and leaves body out; fields selects envelope fields. A challenge page or failed fetch is an error, not an empty result.",
 		schema: schema([]string{"url"}, map[string]any{
 			"url":        prop("string", "URL to fetch"),
 			"timeout":    prop("integer", "Per-attempt timeout in seconds"),
@@ -131,6 +131,8 @@ var tools = []tool{
 			"user_agent": prop("string", "Override the request User-Agent"),
 			"head":       prop("integer", "Return the first N bytes of the body instead of 4096; 1 or more, and not together with full"),
 			"full":       prop("boolean", "Return the whole body; not together with head"),
+			"output":     prop("string", "Save the whole body to this file path (absolute, or relative to the server's working directory); the envelope then leaves body out"),
+			"fields":     prop("string", "Comma-separated envelope fields to return, e.g. bytes,truncated,output"),
 		}),
 		build: func(a args) ([]string, error) {
 			if err := need(a, "url"); err != nil {
@@ -140,10 +142,13 @@ var tools = []tool{
 			out = a.flagInt(out, "timeout", "--timeout")
 			out = a.flagInt(out, "retries", "--retries")
 			out = a.flagStr(out, "user_agent", "--user-agent")
-			// head and full pass through unchanged; the CLI rejects a bad
-			// cut or the combination, so the server holds no logic of its own.
+			// head, full, output and fields pass through unchanged; the CLI
+			// rejects a bad cut, a bad field or a bad combination, so the
+			// server holds no logic of its own.
 			out = a.flagInt(out, "head", "--head")
-			return a.flagBool(out, "full", "--full"), nil
+			out = a.flagBool(out, "full", "--full")
+			out = a.flagStr(out, "output", "--output")
+			return a.flagStr(out, "fields", "--fields"), nil
 		},
 	},
 	{
