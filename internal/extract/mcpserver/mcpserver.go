@@ -138,7 +138,7 @@ var tools = []tool{
 			if err := need(a, "url"); err != nil {
 				return nil, err
 			}
-			out := []string{"fetch", a.str("url")}
+			out := []string{"fetch"}
 			out = a.flagInt(out, "timeout", "--timeout")
 			out = a.flagInt(out, "retries", "--retries")
 			out = a.flagStr(out, "user_agent", "--user-agent")
@@ -148,7 +148,10 @@ var tools = []tool{
 			out = a.flagInt(out, "head", "--head")
 			out = a.flagBool(out, "full", "--full")
 			out = a.flagStr(out, "output", "--output")
-			return a.flagStr(out, "fields", "--fields"), nil
+			out = a.flagStr(out, "fields", "--fields")
+			// The url is a positional, so it goes last and after "--": a url
+			// such as --output=... would otherwise be parsed as a flag.
+			return append(out, "--", a.str("url")), nil
 		},
 	},
 	{

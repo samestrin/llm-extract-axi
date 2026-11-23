@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security
+
+- The MCP `fetch` tool passes the url after `--`, so a url that looks like a flag (`--output=...`) is taken as the url and fails, instead of being parsed as a flag.
+
+### Fixed
+
+- `extract-relevant --path` naming a FIFO or a device (`/dev/zero`, or a link to one) is an error instead of a run that hung or read without end, and a named file is read only as far as the model's 30,000-byte input.
+- `extract-relevant -o` and `fetch --output` refuse (exit 2) a path that exists and is not a regular file: a FIFO blocked the run before it started. `/dev/null` is refused too.
+- README "Limits" says a hard link inside `--path` to a file outside it is read: no path check can tell it from the file's own name.
+
 ## [2.1.1] - 2026-11-23
 
 ### Security
