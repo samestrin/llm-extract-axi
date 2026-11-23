@@ -177,7 +177,7 @@ func TestExtractRelevantReportsSkippedCounts(t *testing.T) {
 	}
 
 	_, out = runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--min")
-	if !strings.Contains(out, `"sk"`) || !strings.Contains(out, `"too_large"`) {
+	if !strings.Contains(out, "sk:") || !strings.Contains(out, "too_large: 1") {
 		t.Errorf("--min does not carry the skipped counts:\n%s", out)
 	}
 	_, out = runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--plain")

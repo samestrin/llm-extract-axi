@@ -151,6 +151,12 @@ func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
 		}
 		plans = append(plans, p...)
 	}
+	// Checked for every file before any is written, under --dry-run too.
+	for _, p := range plans {
+		if err := checkInsideDir(dir, p.path); err != nil {
+			return err
+		}
+	}
 
 	res := setupResult{Written: []string{}, Unchanged: []string{}, DryRun: dryRun}
 	for _, p := range plans {
@@ -242,6 +248,52 @@ func checkSetupDir(dir string) error {
 		return output.UsageError(fmt.Errorf("--dir %s is your home directory: setup writes per-project hooks, and in home they would run in every session; run it in a project directory", dir))
 	}
 	return nil
+}
+
+// checkInsideDir refuses a path that resolves outside dir. A symlinked
+// .claude, .codex or .opencode -- or a linked settings file -- would make
+// setup write through it, and .claude -> ~/.claude installs a hook for every
+// session. A path that does not exist yet is judged by its nearest existing
+// parent; a dangling link is refused, since writing it creates its target.
+func checkInsideDir(dir, path string) error {
+	root, err := resolvePath(dir)
+	if err != nil {
+		return output.UsageError(fmt.Errorf("--dir %s: %w", dir, err))
+	}
+	real, err := resolvePath(path)
+	if err == nil && !within(root, real) {
+		err = fmt.Errorf("it resolves to %s", real)
+	}
+	if err != nil {
+		return output.UsageError(fmt.Errorf("%s is outside --dir %s (%v): setup never writes outside the project; remove the symlink or run setup in that directory", path, dir, err))
+	}
+	return nil
+}
+
+// resolvePath makes p absolute and resolves its symlinks. The part of p that
+// does not exist yet is joined on unresolved; a link whose target is missing
+// is an error.
+func resolvePath(p string) (string, error) {
+	p, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	var rest []string
+	for {
+		real, err := filepath.EvalSymlinks(p)
+		if err == nil {
+			return filepath.Join(append([]string{real}, rest...)...), nil
+		}
+		if _, lerr := os.Lstat(p); lerr == nil {
+			return "", fmt.Errorf("%s exists but cannot be resolved: %w", p, err)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return "", err
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+		p = parent
+	}
 }
 
 // samePath reports whether a and b name the same directory once made

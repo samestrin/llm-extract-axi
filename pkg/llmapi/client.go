@@ -211,7 +211,7 @@ func (c *LLMClient) doRequest(ctx context.Context, req ChatRequest) (string, err
 	url := c.BaseURL + "/chat/completions"
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", redactErr(err))
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -220,7 +220,7 @@ func (c *LLMClient) doRequest(ctx context.Context, req ChatRequest) (string, err
 	// Send request
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", fmt.Errorf("request failed: %w", redactErr(err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
