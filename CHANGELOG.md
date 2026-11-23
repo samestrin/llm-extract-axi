@@ -6,8 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The `llm-extract-mcp` `fetch` tool takes `output` (a file path) and `fields`, passed to `fetch --output` and `--fields`. A cut or non-text body tells the caller to run again with `--output <file>`; over MCP there was no way to.
+- `fetch --help` and `setup --help` end with an Examples section, as `extract-links` and `extract-relevant` already did.
+- `benchmarks/results-tokens.json` records every token count the benchmark README and the catalog entry quote, with the version and date measured; a test fails when a run of the counter, or any quote, disagrees with it.
+
 ### Changed
 
+- A failed `fetch` now names the fix for that failure first in `help[]`, before the usage line: check the URL on a 4xx, try again later or with more `--retries` on a 5xx, open a challenge page in a browser, raise `--max-bytes` over the size cap, or check the URL and raise `--timeout`/`--retries` when no response came back. Before, every failed fetch said only `Run 'llm-extract fetch --help' for usage`.
+- The Agent Skill (written by `setup` and published for `npx skills add`) says how to install `llm-extract` when it is not on `PATH`, that a body that is not UTF-8 text comes back empty and is saved with `--output <file>`, and that a failed run may still carry results beside `error`: exit 2 means fix the command or configuration first.
+- `docs/axi-audit.md` and the catalog entry name their stated exceptions by principle: principle 3 (the model-input cut) and principle 7 (no session-end hook; a hand-written skill checked in CI rather than generated from the home view; no Codex `[features].hooks = true`, since Codex runs hooks by default).
+- The README, `docs/output.md` and the catalog entry say that an error carried inside a `--plain` result prints as an `ERROR:` line, not the `Error:` line of an error with no result; the README's exit-2 row lists the `fetch --head`, `--full` and `--fields` usage errors.
+- The README quick start uses pages that exist (`https://go.dev/doc/`), shows every `fetch` envelope field, gives the macOS checksum command and the non-interactive `npx skills add` form.
+- The tiktoken counts in `benchmarks/README.md` are re-counted on the current `extract-links --axi` output (4503 vs 1517 with `cl100k_base`, 4527 vs 1524 with `o200k_base`, 2.97x), replacing figures from an earlier output.
+- The release checklist re-times the performance table when a release changes what it times, rather than on every release; the README says the table's Version line names the build measured.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `d3a7fd9`, the commit the `v2.1.0` tag carries; every `file:line` pointer was re-checked and every probe re-run there. The token benchmark re-run at `v2.1.0` counts 1432 `extract-links --axi` tokens, not the 1435 quoted since 2026-11-11 (the `v2.0.0` `help[]` line is 3 tokens shorter); `benchmarks/README.md` and the catalog entry now quote 1432, and the ratio stays 3.0x.
 
 ## [2.1.0] - 2026-11-20
