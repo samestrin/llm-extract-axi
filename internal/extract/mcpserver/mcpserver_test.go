@@ -53,6 +53,10 @@ func TestBuildMapsArguments(t *testing.T) {
 			[]string{"fetch", "http://x"}},
 		{"fetch", `{"url":"http://x","head":10,"full":true}`,
 			[]string{"fetch", "http://x", "--head", "10", "--full"}},
+		// EST-8204 item 1: a cut or binary body tells the caller to run
+		// again with --output <file>; an MCP caller must be able to.
+		{"fetch", `{"url":"http://x","output":"/tmp/page.html","fields":"bytes,output"}`,
+			[]string{"fetch", "http://x", "--output", "/tmp/page.html", "--fields", "bytes,output"}},
 		{"extract_links", `{"url":"http://x","context":"c","timeout":3}`,
 			[]string{"extract-links", "--url", "http://x", "--context", "c", "--timeout", "3"}},
 		{"extract_relevant", `{"path":"p","context":"c","concurrency":4}`,
@@ -73,6 +77,28 @@ func TestBuildMapsArguments(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Defends EST-8204 item 1: the fetch help[] lines and the CLI's binary-body
+// hint name --output and --fields, so the tool must offer both, or an MCP
+// caller is told to do something it has no way to do.
+func TestFetchToolOffersOutputAndFields(t *testing.T) {
+	for _, tl := range tools {
+		if tl.name != "fetch" {
+			continue
+		}
+		props, _ := tl.schema["properties"].(map[string]any)
+		for _, k := range []string{"output", "fields"} {
+			if _, ok := props[k]; !ok {
+				t.Errorf("fetch tool has no %q argument", k)
+			}
+		}
+		if !strings.Contains(tl.description, "output") {
+			t.Errorf("fetch description does not mention output: %q", tl.description)
+		}
+		return
+	}
+	t.Fatal("no fetch tool")
 }
 
 // Defends against running the CLI with a missing required argument.
