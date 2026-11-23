@@ -70,7 +70,7 @@ func runExtractRelevantCmd(t *testing.T, args ...string) (string, error) {
 		extractRelevantContext = ""
 		extractRelevantConcurrency = 2
 		extractRelevantOutput = ""
-		extractRelevantPath = "."
+		extractRelevantPath = ""
 		extractRelevantJSON = false
 		extractRelevantMinimal = false
 	})

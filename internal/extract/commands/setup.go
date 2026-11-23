@@ -13,13 +13,26 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 var (
 	setupDir     string
 	setupDryRun  bool
+	setupJSON    bool
 	setupTargets = newTargetList()
 )
+
+// setupResult is what setup reports: the files it wrote (or, under
+// --dry-run, would write) and the ones already right. The lists are never
+// nil, so an empty one prints as an empty list. Help is set under TOON only.
+type setupResult struct {
+	Written   []string `json:"written"`
+	Unchanged []string `json:"unchanged"`
+	DryRun    bool     `json:"dry_run"`
+	Help      []string `json:"help,omitempty"`
+}
 
 // setupBinary is the name the SessionStart hooks run. A bare run prints the
 // content-first home view, which is what an agent should see at session start.
@@ -61,7 +74,7 @@ Run ` + "`llm-extract`" + ` with no arguments to see where the binary is and whi
 - ` + "`llm-extract extract-links --url <url> [--context <text>]`" + ` lists and ranks links. Network; a model only with --context.
 - ` + "`llm-extract extract-relevant --path <file|dir|url> --context <text>`" + ` reduces content to what the context needs. Always a model; network only for a URL.
 
-Output is TOON by default; ` + "`--plain`" + ` prints human-readable text (for ` + "`fetch`" + `, the body bytes alone, still cut unless ` + "`--full`" + `).
+Output is TOON by default; ` + "`--plain`" + ` prints human-readable text (for ` + "`fetch`" + `, the body bytes alone, still cut unless ` + "`--full`" + `; with ` + "`--output <file>`" + `, the line ` + "`Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>`" + `).
 
 A failed fetch or model call exits non-zero with ` + "`error`" + ` and the reason on stdout in the active output format; it is never reported as an empty result. A failed run may still carry results beside ` + "`error`" + ` (the unranked links when ` + "`extract-links --context`" + ` has no API key, the files a directory run finished): treat them as partial. Exit 2 means the command or its configuration is wrong (a bad flag, no API key): fix that before running again. Exit 1 is a run that failed, such as a fetch the server refused; the ` + "`help`" + ` lines name the next step.
 `
@@ -84,9 +97,19 @@ all of them. The hooks run llm-extract by name when it is on PATH, and by
 absolute path otherwise; running setup again after the binary moves points
 them at the new path.
 
-Existing settings keys and hooks are kept. Running it again changes nothing.
-It never prompts, makes no network or model call, and never writes outside
-the project directory (in particular, not to your home directory).
+Existing settings keys and hooks are kept, in their order and with their
+numbers as written. Running it again changes nothing. SKILL.md and the
+OpenCode plugin are setup's own files: a hand edit to either is overwritten
+on the next run, so keep your own notes elsewhere.
+
+--dir must be an existing directory, and not your home directory: hooks there
+would run in every session. setup never prompts, makes no network or model
+call, and never writes outside the project directory.
+
+The result is a TOON document by default: written[] (the files written, or
+under --dry-run the files that would be), unchanged[], dry_run and help[].
+--json prints it as JSON; --plain prints one "wrote", "would write" or
+"unchanged" line per file.
 
 Examples:
   # Show what would be written for every agent, writing nothing
@@ -94,11 +117,12 @@ Examples:
 
   # Register with Claude Code only, in another project
   llm-extract setup --target claude --dir ../my-project`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSetup(cmd.OutOrStdout(), setupDir, setupTargets.names, setupDryRun)
 		},
 	}
+	cmd.Flags().BoolVar(&setupJSON, "json", false, "Output as JSON")
 	cmd.Flags().StringVar(&setupDir, "dir", ".", "Project directory to set up")
 	cmd.Flags().BoolVar(&setupDryRun, "dry-run", false, "Print what would be written without writing")
 	cmd.Flags().Var(setupTargets, "target", "Agent to set up: "+strings.Join(targetNames(), ", ")+" (repeatable)")
@@ -109,6 +133,9 @@ Examples:
 // plans everything before writing anything, so a malformed settings file in
 // one target aborts before any target is written.
 func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
+	if err := checkSetupDir(dir); err != nil {
+		return err
+	}
 	bin, err := hookBinary()
 	if err != nil {
 		return err
@@ -125,30 +152,111 @@ func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
 		plans = append(plans, p...)
 	}
 
-	changed := false
+	res := setupResult{Written: []string{}, Unchanged: []string{}, DryRun: dryRun}
 	for _, p := range plans {
-		verb := "unchanged"
-		if p.changed {
-			changed = true
-			verb = "wrote"
-			if dryRun {
-				verb = "would write"
-			}
-			if !dryRun {
-				if err := os.MkdirAll(filepath.Dir(p.path), 0o755); err != nil {
-					return fmt.Errorf("create %s: %w", filepath.Dir(p.path), err)
-				}
-				if err := os.WriteFile(p.path, p.data, 0o644); err != nil {
-					return fmt.Errorf("write %s: %w", p.path, err)
-				}
-			}
+		if !p.changed {
+			res.Unchanged = append(res.Unchanged, p.path)
+			continue
 		}
-		_, _ = fmt.Fprintf(w, "%s %s\n", verb, p.path)
+		res.Written = append(res.Written, p.path)
+		if dryRun {
+			continue
+		}
+		// The project directory exists (checkSetupDir); this creates only
+		// .claude, .codex and .opencode inside it.
+		if err := os.MkdirAll(filepath.Dir(p.path), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(p.path), err)
+		}
+		if err := os.WriteFile(p.path, p.data, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", p.path, err)
+		}
 	}
-	if !changed {
+	return printSetupResult(w, res)
+}
+
+// printSetupResult writes the result as JSON under --json, TOON with help[]
+// by default, and one line per file under --plain.
+func printSetupResult(w io.Writer, res setupResult) error {
+	if setupJSON {
+		enc := json.NewEncoder(w)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		return enc.Encode(res)
+	}
+	if GlobalAXIOutput {
+		res.Help = setupHelp(res)
+		var doc bytes.Buffer
+		if err := output.EncodeAXI(&doc, res); err != nil {
+			return err
+		}
+		_, err := w.Write(doc.Bytes())
+		return err
+	}
+	verb := "wrote"
+	if res.DryRun {
+		verb = "would write"
+	}
+	for _, p := range res.Written {
+		_, _ = fmt.Fprintf(w, "%s %s\n", verb, p)
+	}
+	for _, p := range res.Unchanged {
+		_, _ = fmt.Fprintf(w, "unchanged %s\n", p)
+	}
+	if len(res.Written) == 0 {
 		_, _ = fmt.Fprintln(w, "already set up; no changes")
 	}
 	return nil
+}
+
+// setupHelp is the help[] block: what to do after a dry run, a write, or a
+// run that found everything in place.
+func setupHelp(res setupResult) []string {
+	switch {
+	case res.DryRun && len(res.Written) > 0:
+		return []string{"Run again without --dry-run to write these files"}
+	case len(res.Written) > 0:
+		return []string{"Start a new agent session in this project to load the hook", "Run 'llm-extract setup' again after the binary moves"}
+	default:
+		return []string{"Already set up; nothing to do"}
+	}
+}
+
+// checkSetupDir refuses a --dir that is not an existing directory, or that is
+// the home directory. A mistyped path must not grow a project tree nobody
+// has, and hooks under ~/.claude or ~/.codex run in every session, not one
+// project's. Both are usage errors (exit 2): the same invocation never
+// succeeds. Symlinks are resolved, so a link to home is caught too.
+func checkSetupDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return output.UsageError(fmt.Errorf("--dir %s: %w; pass an existing project directory", dir, err))
+	}
+	if !info.IsDir() {
+		return output.UsageError(fmt.Errorf("--dir %s is not a directory; pass an existing project directory", dir))
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+	if samePath(dir, home) {
+		return output.UsageError(fmt.Errorf("--dir %s is your home directory: setup writes per-project hooks, and in home they would run in every session; run it in a project directory", dir))
+	}
+	return nil
+}
+
+// samePath reports whether a and b name the same directory once made
+// absolute and resolved through symlinks.
+func samePath(a, b string) bool {
+	resolve := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		return filepath.Clean(p)
+	}
+	return resolve(a) == resolve(b)
 }
 
 // planClaude is the Claude Code target: the hook in .claude/settings.json and
@@ -227,24 +335,29 @@ func planFile(path string, want []byte) (plannedWrite, error) {
 // have the expected shape, is an error: guessing would mean overwriting the
 // user's configuration.
 func planHooks(path, command string) (plannedWrite, error) {
-	settings := map[string]any{}
+	settings := newJSONObject()
+	indent := "  "
 	raw, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
 		return plannedWrite{}, fmt.Errorf("read %s: %w", path, err)
 	default:
-		if err := json.Unmarshal(raw, &settings); err != nil || settings == nil {
+		// Decoded in order and with numbers kept as written, so the merge
+		// rewrites only what it must: the user's keys stay where they were
+		// and 12345678901234567890 is not rounded through float64.
+		if settings, err = decodeJSONObject(raw); err != nil {
 			return plannedWrite{}, fmt.Errorf("%s is not a JSON object; fix or remove it and re-run: %v", path, err)
 		}
+		indent = detectIndent(raw)
 	}
 
-	hooks, err := childMap(settings, "hooks", path)
+	hooks, err := childObject(settings, "hooks", path)
 	if err != nil {
 		return plannedWrite{}, err
 	}
 	var groups []any
-	if v, ok := hooks["SessionStart"]; ok {
+	if v, ok := hooks.get("SessionStart"); ok {
 		if groups, ok = v.([]any); !ok {
 			return plannedWrite{}, fmt.Errorf(`%s: "hooks.SessionStart" is not a list`, path)
 		}
@@ -254,26 +367,29 @@ func planHooks(path, command string) (plannedWrite, error) {
 		return plannedWrite{path: path, data: raw}, nil
 	}
 	if !found {
-		groups = append(groups, map[string]any{
-			"hooks": []any{map[string]any{"type": "command", "command": command}},
-		})
+		hook := newJSONObject()
+		hook.set("type", "command")
+		hook.set("command", command)
+		group := newJSONObject()
+		group.set("hooks", []any{hook})
+		groups = append(groups, group)
 	}
-	hooks["SessionStart"] = groups
-	settings["hooks"] = hooks
+	hooks.set("SessionStart", groups)
+	settings.set("hooks", hooks)
 
-	data, err := json.MarshalIndent(settings, "", "  ")
+	data, err := marshalJSONObject(settings, indent)
 	if err != nil {
 		return plannedWrite{}, err
 	}
-	return plannedWrite{path: path, data: append(data, '\n'), changed: true}, nil
+	return plannedWrite{path: path, data: data, changed: true}, nil
 }
 
-func childMap(m map[string]any, key, path string) (map[string]any, error) {
-	v, ok := m[key]
+func childObject(m *jsonObject, key, path string) (*jsonObject, error) {
+	v, ok := m.get(key)
 	if !ok {
-		return map[string]any{}, nil
+		return newJSONObject(), nil
 	}
-	c, ok := v.(map[string]any)
+	c, ok := v.(*jsonObject)
 	if !ok {
 		return nil, fmt.Errorf("%s: %q is not an object", path, key)
 	}
@@ -284,17 +400,25 @@ func childMap(m map[string]any, key, path string) (map[string]any, error) {
 // any that run something other than command at command, in place.
 func repairHooks(groups []any, command string) (found, repaired bool) {
 	for _, g := range groups {
-		gm, _ := g.(map[string]any)
-		hs, _ := gm["hooks"].([]any)
+		gm, ok := g.(*jsonObject)
+		if !ok {
+			continue
+		}
+		v, _ := gm.get("hooks")
+		hs, _ := v.([]any)
 		for _, h := range hs {
-			hm, _ := h.(map[string]any)
-			c, _ := hm["command"].(string)
+			hm, ok := h.(*jsonObject)
+			if !ok {
+				continue
+			}
+			cv, _ := hm.get("command")
+			c, _ := cv.(string)
 			if !isOurCommand(c) {
 				continue
 			}
 			found = true
 			if c != command {
-				hm["command"] = command
+				hm.set("command", command)
 				repaired = true
 			}
 		}

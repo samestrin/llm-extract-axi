@@ -4,15 +4,15 @@ How `llm-extract` reports results, failures and partial results, in each output 
 
 ## Output modes
 
-- TOON (default): the AXI token-dense format, on the home view, `fetch`, `extract-links` and `extract-relevant`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text).
+- TOON (default): the AXI token-dense format, on the home view, `fetch`, `extract-links`, `extract-relevant` and `setup`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text, and a failed fetch carries one too).
 - `--plain`: human-readable text (the pre-2.0 default). `extract-links` prints a ranked list; `extract-relevant` prints the extracted passages. `--axi=false` is the same.
 - `--axi`: still accepted, a no-op alias for the default.
 - `--json`: structured output. `extract-links` rows carry `href`, `text`, `score` and `section` by default; `--fields` picks others, for example `--fields context,href`, and an unknown field exits 2 and lists the valid ones. `--json` carries no `help[]`.
 - `--min`: a token-optimized form for agent consumption, independent of the encoding.
 
-`--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope (see below); `--plain` prints the body bytes alone, still cut at `--head` unless `--full`, with a one-line size hint on stderr when the body was cut; `--json` prints the same capped envelope as JSON. `setup` and `completion` stay prose. `--json` and `--min` belong to the commands that list them in `--help`; on a command without them they are unknown flags (exit 2). A failed `fetch` prints its error on stdout in the active format, like every other failure.
+`--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope (see below); `--plain` prints the body bytes alone, still cut at `--head` unless `--full`, with a one-line size hint on stderr when the body was cut; `--json` prints the same capped envelope as JSON. `fetch --output FILE --plain` prints one line instead of body bytes, `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>`, because the body is in the file. `setup` prints a `written[]`/`unchanged[]`/`dry_run` document (see below); `completion` stays prose. `--json` and `--min` belong to the commands that list them in `--help`; on a command without them they are unknown flags (exit 2). A failed `fetch` prints its error on stdout in the active format, like every other failure.
 
-When a model ran, the structured output (TOON, `--json`, `--min`) reports `model` and `bytes_sent` (`m`/`bs` in `--min`); `extract-links` without `--context` omits both, because no model ran.
+When a model call answered, the structured output (TOON, `--json`, `--min`) reports `model` and `bytes_sent` (`m`/`bs` in `--min`): `bytes_sent` totals the prompts of the calls that answered. `extract-links` without `--context` omits both, because no model ran, and so does a run whose every call failed before an answer (an unreachable endpoint, a timeout).
 
 ## The home view
 
@@ -22,18 +22,19 @@ Running `llm-extract` with no arguments prints the path of the binary (home show
 
 A successful `fetch` prints one TOON document — the same document as JSON under `--json` — with `url`, `final_url`, `status`, `tier`, `format`, `content_type`, `bytes` (the size of the whole body), `truncated`, and `body`: the first 4096 bytes of the body, cut on a character boundary. When the body is cut, `truncated` is true and `help[]` names `--full` and `--output <file>`; `bytes` is the size hint.
 
-- `--head N` sets the cut; `--full` puts the whole body in `body`. `--head` below 1, or `--head` together with `--full`, is a usage error (exit 2).
+- `--head N` sets the cut; `--full` puts the whole body in `body`. `--head` below 1, `--head` together with `--full`, or `--head` together with `--output` (which saves the whole body), is a usage error (exit 2).
 - A body that is not UTF-8 text (an image, a PDF) is never printed: `body` is empty, `truncated` is true, and `help[]` points to `--output`.
 - `--plain` prints the body bytes alone, still cut at `--head` unless `--full`; when it cuts, a one-line size hint goes to stderr and stdout holds only body bytes.
-- `--output FILE` saves the whole raw body to FILE; stdout gets the envelope with `output` (the path) and without `body`.
+- `--output FILE` saves the whole raw body to FILE; stdout gets the envelope with `output` (the path) and without `body`. Under `--plain` stdout gets one line, `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>`, not body bytes.
+- `--max-bytes` and `--timeout` below 1, and `--retries` below 0, are usage errors (exit 2), never swapped for the default.
 - `--fields a,b` prints only the named envelope fields: `url`, `final_url`, `status`, `tier`, `format`, `content_type`, `bytes`, `truncated`, `output`, `body`, `help`. An unknown field is a usage error (exit 2) listing the valid ones. It composes with `--json` and `--output`; `--fields` with `--plain` is a usage error, and a selection where no named field is present in the run is an error (exit 1) naming the fields, never an empty document.
 
 ## Saving to a file (`-o`)
 
-`extract-relevant -o FILE` writes the extraction to FILE. What stdout carries depends on the mode:
+`extract-relevant -o FILE` writes the extraction to FILE. FILE is checked before the first model call: a path that cannot be written (a missing directory, a directory, no permission) is a usage error (exit 2) and no call is made. What stdout carries depends on the mode:
 
 - `--plain`: a three-line summary — `Extracted content written to: <file>`, `Files processed: <n>/<total>`, `Processing time: <seconds>`.
-- TOON (default) and `--json`: one structured document and nothing else — the result without the passages, which are in FILE (keeping content out of the caller's context is what `-o` is for). It still carries `total`, `total_files`, `processed_files` and `processing_time_s`, `model` and `bytes_sent` when a model ran, the `message` on an empty result, and `help[]` in TOON.
+- TOON (default) and `--json`: one structured document and nothing else — the result without the passages, which are in FILE (keeping content out of the caller's context is what `-o` is for). It still carries `total`, `total_files`, `processed_files` and `processing_time_s`, `model` and `bytes_sent` when a model call answered, the `message` on an empty result, and `help[]` in TOON.
 - A failed run with `-o` prints the error on stdout like any other failure: in TOON the single `error`/`message`/`help[]` document below, so stdout is always one decodable TOON document; under `--json` the result document carries the `error` field. stderr stays empty. A result written to FILE carries the error too; a failure before work starts (no API key) writes no file and prints the usual error document.
 
 The prose summary never reaches stdout in TOON or `--json`: prose in front of a structured document makes the single stream decode as neither.
@@ -41,6 +42,12 @@ The prose summary never reaches stdout in TOON or `--json`: prose in front of a 
 ## Empty results
 
 A successful run that finds nothing exits 0 and carries `total: 0` and a `message` ("no links found" / "no relevant content found"). A failed run carries `error` and exits non-zero. `error` is what marks a failure, not a missing `total`: a failed `extract-relevant` run and a failed `extract-links` fetch carry no total, but a failed `extract-links --context` ranking keeps the unranked links and their `total` beside the `error` (see partial results below). `total` without `error` means the run succeeded. `extract-relevant --path` on a directory with no text file to read (empty, or only binary or over-100 KB files) is a failure, exit 1, with `error: no suitable files found in directory` and no `total`: nothing was searched, so `total: 0` would claim a search that did not happen.
+
+A directory run skips dotfiles and dot directories (`.env`, `.npmrc`, `.aws/`), `*.env` files, and the build and dependency directories (`node_modules`, `vendor`, `dist` and the like): they hold secrets or noise, and a directory run must not send them to a model unasked. A dotfile named as `--path` itself is read. `--path` has no default; leaving it out is a usage error (exit 2).
+
+## setup
+
+`setup` prints one document: `written[]` (the files it wrote, or under `--dry-run` the files it would write), `unchanged[]` (the files already right) and `dry_run`, with `help[]` in TOON. `--json` prints the same document as JSON; `--plain` prints a `wrote <file>`, `would write <file>` or `unchanged <file>` line per file, and `already set up; no changes` when nothing was written. `--dir` must be an existing directory and not the home directory (symlinks resolved); either mistake is a usage error (exit 2) and nothing is written. A settings file is merged in place: its keys keep their order, its numbers keep their digits and its indent is kept. `SKILL.md` and the OpenCode plugin are setup's own files, and a hand edit to either is overwritten on the next run.
 
 ## Failures
 
@@ -70,7 +77,7 @@ Every error is on stdout in the format a success would have used, and stderr sta
 - `--json`: one `{"error": true, "message": ...}` document.
 - `--plain` (or `--axi=false`): a single `Error: ...` line. An error carried inside a result (see partial results above) prints as that result's `ERROR: ...` line instead.
 
-This covers a failure before work starts (no API key, a bad URL, a failed `fetch`), an unknown command (which lists the commands), and an unknown flag (named in the message, with the command's valid flags in `flags[]` in TOON, exit 2, before any network or model call). On a usage error, parsing may stop before the last format flag, so the format is read from the command line the way pflag reads it: `--plain` (or `--axi=false`) gives the plain `Error: ...` line, otherwise `--json` gives JSON, otherwise TOON. The last occurrence of each flag sets that flag, so `--json=false` undoes an earlier `--json`, but `--axi` is the no-op alias for the default and never undoes one: `extract-links --json --nope --axi` prints JSON. The argument after a flag that takes a value is that value, so in `extract-links --url --axi --bogus` the `--axi` is the URL and the error is TOON. `--plain` wins over `--json` whichever comes last, so the usage error for asking for both is always the plain line. It is deliberate: the caller asked for text, and a JSON or TOON document would give it a format it ruled out. An error a result already carries is not printed twice.
+This covers a failure before work starts (no API key, a bad URL, a failed `fetch`), an unknown command (which lists the commands), an extra argument to a command that takes none (the wrong number of arguments, with the command's flags), and an unknown flag (named in the message, with the command's valid flags in `flags[]` in TOON, exit 2, before any network or model call). On a usage error, parsing may stop before the last format flag, so the format is read from the command line the way pflag reads it: `--plain` (or `--axi=false`) gives the plain `Error: ...` line, otherwise `--json` gives JSON, otherwise TOON. The last occurrence of each flag sets that flag, so `--json=false` undoes an earlier `--json`, but `--axi` is the no-op alias for the default and never undoes one: `extract-links --json --nope --axi` prints JSON. The argument after a flag that takes a value is that value, so in `extract-links --url --axi --bogus` the `--axi` is the URL and the error is TOON. `--plain` wins over `--json` whichever comes last, so the usage error for asking for both is always the plain line. It is deliberate: the caller asked for text, and a JSON or TOON document would give it a format it ruled out. An error a result already carries is not printed twice.
 
 ## Suggested commands in help[]
 
@@ -82,7 +89,7 @@ A `help[]` step that suggests running `extract-relevant` on a link, page URL or 
 | --- | --- |
 | 0 | Success, including a successful run that found nothing |
 | 1 | The command ran and failed: a failed fetch or model call, or a partial result |
-| 2 | The invocation itself is malformed: an unknown command or flag, a flag missing its argument, a rejected flag value (such as `fetch --format text`, `fetch --head 0`, `--head` with `--full`, `--fields` with `--plain` or an unknown `--fields` name, or a URL that is not http or https), the wrong number of arguments (such as `fetch` with no URL), `completion` with no shell or an unknown one, `--plain` with `--json`, or an unusable model-key configuration (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
+| 2 | The invocation itself is malformed: an unknown command or flag, a flag missing its argument, a missing required flag (such as `extract-relevant` with no `--path`), a rejected flag value (such as `fetch --format text`, `fetch --head 0`, `--max-bytes 0`, `--timeout 0`, `--retries -1`, `extract-relevant --concurrency 0`, `--head` with `--full` or with `--output`, `--fields` with `--plain` or an unknown `--fields` name, an `extract-relevant -o` path that cannot be written, a `setup --dir` that is missing or is the home directory, or a URL that is not http or https), the wrong number of arguments (such as `fetch` with no URL, or `setup extra`), `completion` with no shell or an unknown one, `--plain` with `--json`, or an unusable model-key configuration (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context` |
 
 Retrying an exit 2 unchanged never helps.
 

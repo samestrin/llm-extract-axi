@@ -1,6 +1,6 @@
 # Release checklist
 
-Steps for cutting a release of `llm-extract`. Run steps 1 to 4 from the repository root on the commit that will be tagged; steps 5 and 6 follow the published release.
+Steps for cutting a release of `llm-extract`. Run steps 1 to 4 from the repository root on the commit that will be tagged; steps 5 to 7 follow the published release.
 
 Two of them keep the two recorded numbers honest: the demo GIF and the performance table. Both show what a release binary does. The GIF is re-rendered when the release changes something it shows; the table is re-timed when the release changes something it times, and its version line always names the build it measured.
 
@@ -76,3 +76,17 @@ Download the release binary for the machine that will be named in the table, the
 - [ ] The table names the version, the date, the machine and the method.
 - [ ] Every figure in the README's `## Performance` table matches the generated table.
 - [ ] Both files and the README are committed in a pull request after the tag.
+
+## 7. Re-pin to the tag commit
+
+The audit, the catalog entry, the token figures and the README's version examples each name a release. After the tag, point them at it, in one pull request:
+
+```bash
+git rev-parse v<version>^{commit}
+./benchmarks/tokens.sh -bin path/to/llm-extract-<os>-<arch>
+```
+
+- [ ] `docs/axi-audit.md`: the **Audited** line names the tag and its commit, and every `file:line` pointer and probe was re-checked there (`TestAXIAuditPointersLandOnTheirSymbols`).
+- [ ] `docs/axi-catalog-entry.yaml`: `reviewed_revision` is the tag's full commit hash, and the comment above it names the tag (`TestAXICatalogEntryReviewsTheAuditedRevision`).
+- [ ] `benchmarks/results-tokens.json`: `version` and `date` name the release binary the counter ran against, and `benchmarks/README.md` and the CHANGELOG quote the same version and date.
+- [ ] `README.md`: the pin-a-version install example (`LLM_EXTRACT_VERSION=v<version>`) and the `--version` example (`<version>`) name the new release.

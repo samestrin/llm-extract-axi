@@ -307,6 +307,17 @@ func run(args []string, stdout, stderr io.Writer) int {
 // rejected argument value, so it exits 2: the same invocation never succeeds.
 var errInvalidURL = output.UsageError(errors.New("invalid URL: must start with http:// or https://"))
 
+// noArgs is the Args check for a subcommand that takes no arguments. cobra's
+// NoArgs reports an extra argument as an unknown command, so the error listed
+// subcommands (none) instead of the flags; this reports the wrong number of
+// arguments, marked as a usage error (exit 2), as fetch's check does.
+func noArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.ExactArgs(0)(cmd, args); err != nil {
+		return output.UsageError(err)
+	}
+	return nil
+}
+
 // reportedError is an error a command has already printed as part of its
 // result. It still sets the exit code, and run() does not print it again.
 type reportedError struct{ error }

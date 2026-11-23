@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [2.1.1] - 2026-11-23
 
+### Security
+
+- `extract-relevant` no longer reads secrets by default. `--path` is required (it defaulted to the current directory), and a directory run skips dotfiles and dot directories (`.env`, `.npmrc`, `.aws/`) and `*.env` files instead of sending them to the model; name one as `--path` to read it. To keep the old behaviour of a bare run, pass `--path .`.
+- `setup` refuses (exit 2) a `--dir` that is your home directory, where its hooks would run in every session, and a `--dir` that does not exist or is not a directory, instead of creating it.
+
+### Fixed
+
+- `setup` keeps a settings file's key order, its numbers' digits (a large integer is no longer rounded) and its indent when it adds the hook.
+- A bad number is refused (exit 2) instead of replaced: `fetch --max-bytes` or `--timeout` below 1, `fetch --retries` below 0, `extract-links --timeout` below 1, and `extract-relevant --timeout` or `--concurrency` below 1.
+- `extract-relevant -o` is checked before the first model call; a path that cannot be written exits 2 and costs no call.
+- `model` and `bytes_sent` are reported only for model calls that answered; a run whose model was unreachable no longer claims one.
+- `fetch --head` with `--output` is a usage error (exit 2): the file always gets the whole body, so the cut was ignored.
+- An extra argument to `setup`, `extract-links` or `extract-relevant` is reported as the wrong number of arguments, with the command's flags, instead of an unknown command with no commands listed.
+- On `extract-links`, a page over the size cap gets the hint to raise `FETCH_MAX_BYTES`, not `--timeout`.
+
 ### Added
 
 - The `llm-extract-mcp` `fetch` tool takes `output` (a file path) and `fields`, passed to `fetch --output` and `--fields`. A cut or non-text body tells the caller to run again with `--output <file>`; over MCP there was no way to.
@@ -16,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `setup` prints a TOON document by default (`written[]`, `unchanged[]`, `dry_run` and `help[]`), and takes `--json`. To keep the previous one-line-per-file text, add `--plain`.
+- The docs say what `fetch --output FILE --plain` prints (`Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>`), that `setup` overwrites a hand-edited `SKILL.md`, that `help[]` also follows a failed fetch, and that a missing API key exits 2 in `extract-links --context` only when the page has links to rank. The README's `extract-links` examples use a page that has links, and its performance section says the table is copied by hand from the generated file and checked by a test.
+- The release checklist has a post-tag step: re-pin the audit and the catalog entry to the tag commit, re-run the token counter there, and bump the README's version examples.
 - A failed `fetch` now names the fix for that failure first in `help[]`, before the usage line: check the URL on a 4xx, try again later or with more `--retries` on a 5xx, open a challenge page in a browser, raise `--max-bytes` over the size cap, or check the URL and raise `--timeout`/`--retries` when no response came back. Before, every failed fetch said only `Run 'llm-extract fetch --help' for usage`.
 - The Agent Skill (written by `setup` and published for `npx skills add`) says how to install `llm-extract` when it is not on `PATH`, that a body that is not UTF-8 text comes back empty and is saved with `--output <file>`, and that a failed run may still carry results beside `error`: exit 2 means fix the command or configuration first.
 - `docs/axi-audit.md` and the catalog entry name their stated exceptions by principle: principle 3 (the model-input cut) and principle 7 (no session-end hook; a hand-written skill checked in CI rather than generated from the home view; no Codex `[features].hooks = true`, since Codex runs hooks by default).
@@ -23,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The README quick start uses pages that exist (`https://go.dev/doc/`), shows every `fetch` envelope field, gives the macOS checksum command and the non-interactive `npx skills add` form.
 - The tiktoken counts in `benchmarks/README.md` are re-counted on the current `extract-links --axi` output (4503 vs 1517 with `cl100k_base`, 4527 vs 1524 with `o200k_base`, 2.97x), replacing figures from an earlier output.
 - The release checklist re-times the performance table when a release changes what it times, rather than on every release; the README says the table's Version line names the build measured.
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `d3a7fd9`, the commit the `v2.1.0` tag carries; every `file:line` pointer was re-checked and every probe re-run there. The token benchmark re-run at `v2.1.0` counts 1432 `extract-links --axi` tokens, not the 1435 quoted since 2026-11-11 (the `v2.0.0` `help[]` line is 3 tokens shorter); `benchmarks/README.md` and the catalog entry now quote 1432, and the ratio stays 3.0x.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `d3a7fd9`, the commit the `v2.1.0` tag carries; every `file:line` pointer was re-checked and every probe re-run there. The token benchmark re-run at `v2.1.0` counts 1432 `extract-links --axi` tokens, not the 1435 quoted since 2026-11-11 (the `v2.0.0` `help[]` line is 3 tokens shorter); `benchmarks/README.md` and the catalog entry now quote 1432, and the ratio stays 3.0x.
 - For v2.1.1, `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `2a6c41a`, PR #77's merge commit on `main`; every `file:line` pointer was re-checked and every probe re-run there. The token benchmark re-run at that commit still counts 4240 raw-page tokens and 1432 `extract-links --axi` tokens (3.0x), so the quoted counts are unchanged and `benchmarks/results-tokens.json` now names the measured revision.
 

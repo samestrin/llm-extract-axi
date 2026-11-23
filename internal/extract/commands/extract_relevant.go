@@ -143,7 +143,7 @@ API Configuration:
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.
   ANTHROPIC_API_KEY needs OPENAI_BASE_URL: the client speaks the
   OpenAI-compatible API and never sends that key to the OpenAI default.`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
 		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
 		// Execute() was called on. The unit tests build this command fresh with
@@ -156,7 +156,8 @@ API Configuration:
 		RunE:         runExtractRelevant,
 	}
 
-	cmd.Flags().StringVar(&extractRelevantPath, "path", ".", "File or directory path to process")
+	// No default: "." sent whatever directory the caller stood in to a model.
+	cmd.Flags().StringVar(&extractRelevantPath, "path", "", "File, directory or URL to process (required)")
 	cmd.Flags().StringVar(&extractRelevantContext, "context", "", "Context describing what content to extract (required)")
 	cmd.Flags().IntVar(&extractRelevantConcurrency, "concurrency", 2, "Number of concurrent API calls for directory processing")
 	cmd.Flags().StringVarP(&extractRelevantOutput, "output", "o", "", "Output file (default: stdout)")
@@ -164,6 +165,7 @@ API Configuration:
 	cmd.Flags().BoolVar(&extractRelevantJSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&extractRelevantMinimal, "min", false, "Output in minimal/token-optimized format")
 
+	_ = cmd.MarkFlagRequired("path")
 	_ = cmd.MarkFlagRequired("context")
 
 	return cmd
@@ -173,9 +175,26 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 	targetPath := extractRelevantPath
 
+	// An empty --path is as missing as an absent one: refused, never ".".
+	if targetPath == "" {
+		return output.UsageError(fmt.Errorf("--path is required"))
+	}
 	// Validate context is provided
 	if extractRelevantContext == "" {
 		return output.UsageError(fmt.Errorf("--context is required"))
+	}
+	// Bad numbers and an unwritable -o are refused before any model call:
+	// --timeout 0 used to fail every call, and a bad -o failed after them all.
+	if err := atLeast("timeout", extractRelevantTimeout, 1); err != nil {
+		return err
+	}
+	if err := atLeast("concurrency", extractRelevantConcurrency, 1); err != nil {
+		return err
+	}
+	if extractRelevantOutput != "" {
+		if err := checkWritable(extractRelevantOutput); err != nil {
+			return err
+		}
 	}
 
 	// Load API configuration
@@ -255,6 +274,36 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return nil
+}
+
+// checkWritable reports whether path can be written as the -o file, without
+// writing it: an existing file is opened for writing and left as it was, and
+// for a new file its directory is tested with a temporary file that is
+// removed at once. Failure is a usage error: the same -o never works.
+func checkWritable(path string) error {
+	refuse := func(err error) error {
+		return output.UsageError(fmt.Errorf("cannot write -o %s: %w", path, err))
+	}
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && info.IsDir():
+		return refuse(errors.New("it is a directory"))
+	case err == nil:
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return refuse(err)
+		}
+		return f.Close()
+	case !errors.Is(err, os.ErrNotExist):
+		return refuse(err)
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".llm-extract-check-*")
+	if err != nil {
+		return refuse(err)
+	}
+	name := f.Name()
+	_ = f.Close()
+	return os.Remove(name)
 }
 
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
@@ -466,11 +515,22 @@ func htmlToText(r io.Reader) (string, error) {
 }
 
 func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath string, result *ExtractRelevantResult) error {
-	// Collect files to process
+	// Collect files to process. A *.env file is never collected: hasTextExtension
+	// leaves the extension out, because those files hold secrets.
 	var files []string
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip files we can't access
+		}
+
+		// A dotfile or dot directory is skipped unless it is the path the
+		// caller named: .env, .npmrc and .aws hold secrets, and a directory
+		// run must not send them to a model unasked.
+		if path != dirPath && strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip directories
@@ -600,10 +660,16 @@ Rules:
 		llmPromptsCut.Add(1)
 	}
 
-	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	return client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	answer, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	if err != nil {
+		return "", err
+	}
+	// Counted once the call has answered, so a model that was never reached
+	// is not reported as used.
+	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+	return answer, nil
 }
 
 func shouldExcludeDir(name string) bool {
@@ -636,7 +702,7 @@ func hasTextExtension(path string) bool {
 		".java": true, ".kt": true, ".swift": true, ".c": true, ".cpp": true,
 		".h": true, ".hpp": true, ".rb": true, ".php": true, ".vue": true,
 		".svelte": true, ".astro": true, ".prisma": true, ".graphql": true,
-		".proto": true, ".dockerfile": true, ".gitignore": true, ".env": true,
+		".proto": true, ".dockerfile": true,
 	}
 
 	ext := strings.ToLower(filepath.Ext(path))

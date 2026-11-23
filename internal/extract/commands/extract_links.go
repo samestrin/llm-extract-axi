@@ -15,6 +15,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/spf13/cobra"
 
+	"github.com/samestrin/llm-extract-axi/v2/internal/support/fetch"
 	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
 	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
@@ -183,7 +184,7 @@ Examples:
   # LLM-based ranking
   llm-extract extract-links --url https://example.com/docs --context "authentication"
   llm-extract extract-links --url https://api.example.com --context "rate limiting" --json`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
 		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
 		// Execute() was called on. The unit tests build this command fresh with
@@ -219,6 +220,9 @@ func runExtractLinks(cmd *cobra.Command, args []string) error {
 	}
 
 	if _, err := parseLinkFields(extractLinksFields); err != nil {
+		return err
+	}
+	if err := atLeast("timeout", extractLinksTimeout, 1); err != nil {
 		return err
 	}
 
@@ -289,6 +293,9 @@ func extractLinksHelp(result ExtractLinksResult, cause error) []string {
 	// works wastes the retry.
 	case result.Error != "" && strings.HasPrefix(result.Error, "LLM ranking failed"):
 		return []string{"The model call or its reply failed; run the command again, or drop --context to rank by page position without a model", usage}
+	// A page over the size cap is not fixed by a longer timeout.
+	case result.Error != "" && errors.Is(cause, fetch.ErrTooLarge):
+		return []string{"The page is larger than the size cap; raise FETCH_MAX_BYTES if the whole page is wanted, then run the command again", usage}
 	case result.Error != "":
 		return []string{"Check the URL is reachable, or raise --timeout, then run the command again", usage}
 	case len(result.Links) == 0:
@@ -664,14 +671,15 @@ Do not include any explanation or text outside the JSON.`
 		llmPromptsCut.Add(1)
 	}
 
-	// Call the LLM
-	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+	// Call the LLM. The bytes are counted once the call has answered, so a
+	// model that was never reached is not reported as used.
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	response, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
 	if err != nil {
 		return links, fmt.Errorf("LLM request failed: %w", err)
 	}
+	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
 
 	// Parse the response
 	rankings, err := parseLLMRankings(response, len(links))

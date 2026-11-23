@@ -52,20 +52,21 @@ func noProseSummary(t *testing.T, stdout string) {
 
 // Defends the other failure at the same -o boundary: the file cannot be
 // written. Under --axi stdout is still one TOON error document with no prose in
-// front of it, and the exit code says the run failed.
+// front of it. Since EST-8259 item 5 the path is checked before the model
+// call, so the exit is 2 (the same -o never works), not 1 after the work.
 func TestAXIExtractRelevantOutputFileWriteFailureIsOneTOONDocument(t *testing.T) {
 	src, _ := extractingFile(t, "the extracted passage")
 	dst := filepath.Join(t.TempDir(), "no-such-dir", "out.md")
 	code, stdout, stderr := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "-o", dst, "--axi")
-	if code != 1 {
-		t.Fatalf("exit %d, want 1:\n%s", code, stdout)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2:\n%s", code, stdout)
 	}
 	if stderr != "" {
 		t.Errorf("stderr is not empty under --axi: %q", stderr)
 	}
 	noProseSummary(t, stdout)
 	doc := axiError(t, stdout)
-	if msg, _ := doc["message"].(string); !strings.Contains(msg, "failed to write output") {
+	if msg, _ := doc["message"].(string); !strings.Contains(msg, "cannot write -o") {
 		t.Errorf("message %q does not name the write failure", msg)
 	}
 	if n := strings.Count(stdout, "error: true"); n != 1 {
