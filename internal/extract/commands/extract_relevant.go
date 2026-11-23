@@ -71,6 +71,10 @@ type ExtractRelevantResult struct {
 	// maxRelevantPromptBytes is cut, and the content past the cut is unread.
 	Truncated string `json:"truncated,omitempty"`
 	Tr        string `json:"tr,omitempty"`
+	// Skipped counts, by reason, the files a directory run did not read, so a
+	// file left out is never left out silently.
+	Skipped map[string]int `json:"skipped,omitempty"`
+	SK      map[string]int `json:"sk,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 }
