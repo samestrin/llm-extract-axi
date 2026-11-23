@@ -1,0 +1,13 @@
+{
+  "version": "2.1.0-4-g7f518e7",
+  "date": "2026-11-23",
+  "fixture": "benchmarks/fixtures/docs-page.html",
+  "fixture_bytes": 15411,
+  "command": "llm-extract extract-links --url https://docs.example.com/docs/getting-started/ --axi",
+  "counter": {"raw": 4240, "axi": 1432},
+  "tiktoken": {
+    "version": "0.14.0",
+    "cl100k_base": {"raw": 4503, "axi": 1517},
+    "o200k_base": {"raw": 4527, "axi": 1524}
+  }
+}
