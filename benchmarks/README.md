@@ -18,7 +18,7 @@ ratio         3.0x (raw / --axi)
 
 `llm-extract extract-links --axi`, in its default heuristic mode, gives an agent every link on the page, ranked, with its text, score and section, in **3.0x fewer tokens** than the page itself.
 
-Measured on 2026-11-11 with the counter described below (1435 tokens then) and re-run on 2026-11-20 at `v2.1.0`: the shorter `help[]` line from `v2.0.0` (it names `<links[0].href>` instead of quoting the link) took 3 tokens off; the ratio is unchanged. Re-counted on 2026-11-23 with tiktoken 0.14.0 on the same output: 4503 vs 1517 tokens with `cl100k_base`, 4527 vs 1524 with `o200k_base`, a 2.97 ratio both times.
+Measured on 2026-11-11 with the counter described below (1435 tokens then) and re-run on 2026-11-20 at `v2.1.0`: the shorter `help[]` line from `v2.0.0` (it names `<links[0].href>` instead of quoting the link) took 3 tokens off; the ratio is unchanged. Re-run on 2026-11-23 at `2a6c41a`, PR #77's merge commit, with the same 4240 and 1432 counts. Re-counted on 2026-11-23 with tiktoken 0.14.0 on the same output: 4503 vs 1517 tokens with `cl100k_base`, 4527 vs 1524 with `o200k_base`, a 2.97 ratio both times.
 
 Every figure above comes from [`results-tokens.json`](results-tokens.json), which names the version and date it was measured on. `TestQuotedTokenCountsMatchARun` (`benchmarks/tokens/main_test.go`) fails when a fresh run of the counter disagrees with that file, or when this page or the catalog entry quotes anything else. The tiktoken counts need the `tiktoken` Python package and its vocabulary, so CI does not re-run them; re-count them by hand when the output changes.
 

@@ -21,8 +21,8 @@
 #      newer for forks). It runs the pipeline and opens the PR.
 #
 # `reviewed_revision` is the commit docs/axi-audit.md was made against
-# (d3a7fd9, the commit the v2.1.0 tag carries: epic 10's fetch TOON envelope,
-# --fields and the skill/MCP envelope pass-through).
+# (2a6c41a, PR #77's merge commit on `main`: the v2.1.1 review-round-1
+# source and documentation, re-checked for this release prep).
 # If a later release moves the pin, re-check docs/axi-audit.md there and
 # replace both; TestAXIAuditPointersLandOnTheirSymbols and
 # TestAXICatalogEntryReviewsTheAuditedRevision fail when they drift apart.
@@ -37,7 +37,7 @@
   description: "Fetches a web page or file and returns only the ranked links or the passages relevant to a given context; on a 15 KB documentation page, `extract-links --axi` printed 3.0x fewer tokens than the page itself (1,432 vs 4,240, offline benchmark, no model call)."
   admission:
     status: exception
-    reviewed_revision: d3a7fd9fdb4ae58de4e415d57102b965797972a6
+    reviewed_revision: 2a6c41a36531e328998f76d78d43c7feff42f485
     reviewed_components:
       - README.md
       - docs/axi-audit.md
