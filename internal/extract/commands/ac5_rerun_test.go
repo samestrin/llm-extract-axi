@@ -28,7 +28,7 @@ func TestBadURLIsUsageError(t *testing.T) {
 		{[]string{"extract-links", "--url", "not-a-url"}, "invalid URL", "http://"},
 		{[]string{"extract-links", "--url", "ftp://x"}, "invalid URL", "http://"},
 		{[]string{"extract-links", "--url", ""}, "--url is required", "extract-links --help"},
-		{[]string{"extract-relevant", "--context", ""}, "--context is required", "extract-relevant --help"},
+		{[]string{"extract-relevant", "--path", "x", "--context", ""}, "--context is required", "extract-relevant --help"},
 	} {
 		code, doc, out := runDoc(t, tc.args...)
 		if code != 2 {

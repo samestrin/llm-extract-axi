@@ -159,7 +159,7 @@ func TestExtractRelevantDirectoryAbortsOnCommandCancel(t *testing.T) {
 		extractRelevantContext = ""
 		extractRelevantConcurrency = 2
 		extractRelevantOutput = ""
-		extractRelevantPath = "."
+		extractRelevantPath = ""
 		extractRelevantJSON = false
 		extractRelevantMinimal = false
 	})

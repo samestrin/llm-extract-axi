@@ -156,7 +156,8 @@ API Configuration:
 		RunE:         runExtractRelevant,
 	}
 
-	cmd.Flags().StringVar(&extractRelevantPath, "path", ".", "File or directory path to process")
+	// No default: "." sent whatever directory the caller stood in to a model.
+	cmd.Flags().StringVar(&extractRelevantPath, "path", "", "File, directory or URL to process (required)")
 	cmd.Flags().StringVar(&extractRelevantContext, "context", "", "Context describing what content to extract (required)")
 	cmd.Flags().IntVar(&extractRelevantConcurrency, "concurrency", 2, "Number of concurrent API calls for directory processing")
 	cmd.Flags().StringVarP(&extractRelevantOutput, "output", "o", "", "Output file (default: stdout)")
@@ -164,6 +165,7 @@ API Configuration:
 	cmd.Flags().BoolVar(&extractRelevantJSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&extractRelevantMinimal, "min", false, "Output in minimal/token-optimized format")
 
+	_ = cmd.MarkFlagRequired("path")
 	_ = cmd.MarkFlagRequired("context")
 
 	return cmd
@@ -173,6 +175,10 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 	targetPath := extractRelevantPath
 
+	// An empty --path is as missing as an absent one: refused, never ".".
+	if targetPath == "" {
+		return output.UsageError(fmt.Errorf("--path is required"))
+	}
 	// Validate context is provided
 	if extractRelevantContext == "" {
 		return output.UsageError(fmt.Errorf("--context is required"))
@@ -466,11 +472,22 @@ func htmlToText(r io.Reader) (string, error) {
 }
 
 func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath string, result *ExtractRelevantResult) error {
-	// Collect files to process
+	// Collect files to process. A *.env file is never collected: hasTextExtension
+	// leaves the extension out, because those files hold secrets.
 	var files []string
 	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil // Skip files we can't access
+		}
+
+		// A dotfile or dot directory is skipped unless it is the path the
+		// caller named: .env, .npmrc and .aws hold secrets, and a directory
+		// run must not send them to a model unasked.
+		if path != dirPath && strings.HasPrefix(info.Name(), ".") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Skip directories
@@ -636,7 +653,7 @@ func hasTextExtension(path string) bool {
 		".java": true, ".kt": true, ".swift": true, ".c": true, ".cpp": true,
 		".h": true, ".hpp": true, ".rb": true, ".php": true, ".vue": true,
 		".svelte": true, ".astro": true, ".prisma": true, ".graphql": true,
-		".proto": true, ".dockerfile": true, ".gitignore": true, ".env": true,
+		".proto": true, ".dockerfile": true,
 	}
 
 	ext := strings.ToLower(filepath.Ext(path))

@@ -130,7 +130,7 @@ func TestExtractRelevantPageFetchStopsOnCancel(t *testing.T) {
 		extractRelevantContext = ""
 		extractRelevantConcurrency = 2
 		extractRelevantOutput = ""
-		extractRelevantPath = "."
+		extractRelevantPath = ""
 		extractRelevantJSON = false
 		extractRelevantMinimal = false
 		extractRelevantTimeout = 60

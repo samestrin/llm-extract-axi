@@ -13,6 +13,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 var (
@@ -109,6 +111,9 @@ Examples:
 // plans everything before writing anything, so a malformed settings file in
 // one target aborts before any target is written.
 func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
+	if err := checkSetupDir(dir); err != nil {
+		return err
+	}
 	bin, err := hookBinary()
 	if err != nil {
 		return err
@@ -149,6 +154,44 @@ func runSetup(w io.Writer, dir string, targets []string, dryRun bool) error {
 		_, _ = fmt.Fprintln(w, "already set up; no changes")
 	}
 	return nil
+}
+
+// checkSetupDir refuses a --dir that is not an existing directory, or that is
+// the home directory. A mistyped path must not grow a project tree nobody
+// has, and hooks under ~/.claude or ~/.codex run in every session, not one
+// project's. Both are usage errors (exit 2): the same invocation never
+// succeeds. Symlinks are resolved, so a link to home is caught too.
+func checkSetupDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return output.UsageError(fmt.Errorf("--dir %s: %w; pass an existing project directory", dir, err))
+	}
+	if !info.IsDir() {
+		return output.UsageError(fmt.Errorf("--dir %s is not a directory; pass an existing project directory", dir))
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+	if samePath(dir, home) {
+		return output.UsageError(fmt.Errorf("--dir %s is your home directory: setup writes per-project hooks, and in home they would run in every session; run it in a project directory", dir))
+	}
+	return nil
+}
+
+// samePath reports whether a and b name the same directory once made
+// absolute and resolved through symlinks.
+func samePath(a, b string) bool {
+	resolve := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			p = r
+		}
+		return filepath.Clean(p)
+	}
+	return resolve(a) == resolve(b)
 }
 
 // planClaude is the Claude Code target: the hook in .claude/settings.json and
