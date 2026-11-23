@@ -44,19 +44,23 @@ func TestBuildMapsArguments(t *testing.T) {
 		want []string
 	}{
 		{"fetch", `{"url":"http://x","timeout":5,"retries":0,"user_agent":"ua"}`,
-			[]string{"fetch", "http://x", "--timeout", "5", "--retries", "0", "--user-agent", "ua"}},
+			[]string{"fetch", "--timeout", "5", "--retries", "0", "--user-agent", "ua", "--", "http://x"}},
 		{"fetch", `{"url":"http://x","head":10}`,
-			[]string{"fetch", "http://x", "--head", "10"}},
+			[]string{"fetch", "--head", "10", "--", "http://x"}},
 		{"fetch", `{"url":"http://x","full":true}`,
-			[]string{"fetch", "http://x", "--full"}},
+			[]string{"fetch", "--full", "--", "http://x"}},
 		{"fetch", `{"url":"http://x","full":false}`,
-			[]string{"fetch", "http://x"}},
+			[]string{"fetch", "--", "http://x"}},
 		{"fetch", `{"url":"http://x","head":10,"full":true}`,
-			[]string{"fetch", "http://x", "--head", "10", "--full"}},
+			[]string{"fetch", "--head", "10", "--full", "--", "http://x"}},
 		// EST-8204 item 1: a cut or binary body tells the caller to run
 		// again with --output <file>; an MCP caller must be able to.
 		{"fetch", `{"url":"http://x","output":"/tmp/page.html","fields":"bytes,output"}`,
-			[]string{"fetch", "http://x", "--output", "/tmp/page.html", "--fields", "bytes,output"}},
+			[]string{"fetch", "--output", "/tmp/page.html", "--fields", "bytes,output", "--", "http://x"}},
+		// EST-8337 item 1: the url is a positional, so one that looks like a
+		// flag was parsed as one; after "--" it is only ever the url.
+		{"fetch", `{"url":"--output=/tmp/pwned"}`,
+			[]string{"fetch", "--", "--output=/tmp/pwned"}},
 		{"extract_links", `{"url":"http://x","context":"c","timeout":3}`,
 			[]string{"extract-links", "--url", "http://x", "--context", "c", "--timeout", "3"}},
 		{"extract_relevant", `{"path":"p","context":"c","concurrency":4}`,
@@ -133,7 +137,7 @@ func TestNonZeroExitIsError(t *testing.T) {
 func TestSuccessReturnsStdout(t *testing.T) {
 	bin := fakeCLI(t, `echo "$@"`)
 	r := Run(context.Background(), bin, "fetch", json.RawMessage(`{"url":"http://x"}`))
-	if r.IsError || !strings.Contains(text(t, r.Content), "fetch http://x") {
+	if r.IsError || !strings.Contains(text(t, r.Content), "fetch -- http://x") {
 		t.Errorf("unexpected result %+v", r)
 	}
 }

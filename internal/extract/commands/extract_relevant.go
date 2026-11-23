@@ -234,12 +234,15 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("cannot access path: %w", statErr)
 		}
 
-		if info.IsDir() {
-			// Process directory
+		switch {
+		case info.IsDir():
 			err = processDirectory(cmd, client, targetPath, &result)
-		} else {
-			// Process single file
+		case info.Mode().IsRegular():
 			err = processSingleFile(cmd, client, targetPath, &result)
+		default:
+			// Opening a FIFO blocks until a writer appears, and /dev/zero
+			// never ends.
+			return fmt.Errorf("cannot read --path %s: not a regular file or directory", targetPath)
 		}
 	}
 
@@ -294,6 +297,9 @@ func checkWritable(flag, path string) error {
 	switch {
 	case err == nil && info.IsDir():
 		return refuse(errors.New("it is a directory"))
+	case err == nil && !info.Mode().IsRegular():
+		// Opening a FIFO for writing blocks until a reader appears.
+		return refuse(errors.New("not a regular file"))
 	case err == nil:
 		f, err := os.OpenFile(path, os.O_WRONLY, 0)
 		if err != nil {
@@ -312,8 +318,21 @@ func checkWritable(flag, path string) error {
 	return os.Remove(name)
 }
 
+// readCapped reads at most limit+1 bytes of the file at path: one past the
+// limit, so a caller can tell the file ran over it.
+func readCapped(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(io.LimitReader(f, limit+1))
+}
+
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
-	content, err := os.ReadFile(filePath)
+	// The model reads no more than maxRelevantPromptBytes, so neither does
+	// this; the byte past it makes the prompt cut, and so its truncated note.
+	content, err := readCapped(filePath, maxRelevantPromptBytes)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
