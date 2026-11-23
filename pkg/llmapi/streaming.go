@@ -170,7 +170,7 @@ func (c *LLMClient) doStreamRequest(ctx context.Context, req ChatRequest, idleTi
 	url := c.BaseURL + "/chat/completions"
 	httpReq, err := http.NewRequestWithContext(streamCtx, "POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", false, fmt.Errorf("failed to create request: %w", err)
+		return "", false, fmt.Errorf("failed to create request: %w", redactErr(err))
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -179,7 +179,7 @@ func (c *LLMClient) doStreamRequest(ctx context.Context, req ChatRequest, idleTi
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return "", false, wrapIdle(fmt.Errorf("request failed: %w", err))
+		return "", false, wrapIdle(fmt.Errorf("request failed: %w", redactErr(err)))
 	}
 	defer func() { _ = resp.Body.Close() }()
 	// Headers arriving is activity too, so stamp it before re-arming.

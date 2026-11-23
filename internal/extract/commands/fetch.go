@@ -236,6 +236,13 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	if fetchFormat != formatRaw {
 		return output.UsageError(fmt.Errorf("unsupported --format %q: only %q is available", fetchFormat, formatRaw))
 	}
+	// A directory or a path with no parent is refused before the request,
+	// not after it with exit 1.
+	if fetchOutput != "" {
+		if err := checkWritable("--output", fetchOutput); err != nil {
+			return err
+		}
+	}
 
 	cfg := fetch.LoadConfig()
 	if cmd.Flags().Changed("timeout") {

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -71,6 +72,10 @@ type ExtractRelevantResult struct {
 	// maxRelevantPromptBytes is cut, and the content past the cut is unread.
 	Truncated string `json:"truncated,omitempty"`
 	Tr        string `json:"tr,omitempty"`
+	// Skipped counts, by reason, the files a directory run did not read, so a
+	// file left out is never left out silently.
+	Skipped map[string]int `json:"skipped,omitempty"`
+	SK      map[string]int `json:"sk,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 }
@@ -192,7 +197,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if extractRelevantOutput != "" {
-		if err := checkWritable(extractRelevantOutput); err != nil {
+		if err := checkWritable("-o", extractRelevantOutput); err != nil {
 			return err
 		}
 	}
@@ -276,13 +281,14 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// checkWritable reports whether path can be written as the -o file, without
-// writing it: an existing file is opened for writing and left as it was, and
-// for a new file its directory is tested with a temporary file that is
-// removed at once. Failure is a usage error: the same -o never works.
-func checkWritable(path string) error {
+// checkWritable reports whether path can be written as the file that flag
+// (-o, --output) names, without writing it: an existing file is opened for
+// writing and left as it was, and for a new file its directory is tested with
+// a temporary file that is removed at once. Failure is a usage error: the
+// same path never works.
+func checkWritable(flag, path string) error {
 	refuse := func(err error) error {
-		return output.UsageError(fmt.Errorf("cannot write -o %s: %w", path, err))
+		return output.UsageError(fmt.Errorf("cannot write %s %s: %w", flag, path, err))
 	}
 	info, err := os.Stat(path)
 	switch {
@@ -514,51 +520,178 @@ func htmlToText(r io.Reader) (string, error) {
 	return result, nil
 }
 
-func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath string, result *ExtractRelevantResult) error {
-	// Collect files to process. A *.env file is never collected: hasTextExtension
-	// leaves the extension out, because those files hold secrets.
+// maxDirFileBytes is the largest file a directory run reads; a larger one is
+// skipped and counted as too_large.
+const maxDirFileBytes = 100 * 1024
+
+// Reasons a directory run skips a file, as counted in the result's skipped.
+const (
+	skipDotfile     = "dotfile"
+	skipExcludedDir = "excluded_dir"
+	skipCredential  = "credential_name"
+	skipNotText     = "not_text"
+	skipTooLarge    = "too_large"
+	skipOutsidePath = "outside_path"
+	skipNotRegular  = "not_regular"
+	skipUnreadable  = "unreadable"
+)
+
+// collectDirFiles walks root and returns the files a directory run reads,
+// with a count of the rest by reason. root has been resolved through
+// symlinks. A file is read only if it is a regular file whose real path is
+// under root: a link out of the tree would send a file the caller never
+// named, and a link to /dev/zero or a FIFO would never finish reading.
+func collectDirFiles(root string) ([]string, map[string]int, error) {
 	var files []string
-	err := filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+	skipped := map[string]int{}
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip files we can't access
+			skipped[skipUnreadable]++
+			return nil
 		}
 
 		// A dotfile or dot directory is skipped unless it is the path the
 		// caller named: .env, .npmrc and .aws hold secrets, and a directory
 		// run must not send them to a model unasked.
-		if path != dirPath && strings.HasPrefix(info.Name(), ".") {
+		if path != root && strings.HasPrefix(info.Name(), ".") {
+			skipped[skipDotfile]++
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		// Skip directories
 		if info.IsDir() {
-			// Skip common excluded directories
 			if shouldExcludeDir(info.Name()) {
+				skipped[skipExcludedDir]++
 				return filepath.SkipDir
 			}
 			return nil
 		}
-
-		// Skip binary and non-text files
+		// Named before the extension test, so a skipped server.key counts as
+		// a credential rather than as not text.
+		if isCredentialName(info.Name()) {
+			skipped[skipCredential]++
+			return nil
+		}
+		// A *.env file is never collected: hasTextExtension leaves the
+		// extension out, because those files hold secrets.
 		if !hasTextExtension(path) {
+			skipped[skipNotText]++
 			return nil
 		}
 
-		// Skip very large files
-		if info.Size() > 100*1024 { // 100KB limit
+		// Walk reports a symlink itself, so its size is the link's length.
+		// Resolve it, and judge the target it would read.
+		if info.Mode()&os.ModeSymlink != 0 {
+			real, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				skipped[skipUnreadable]++
+				return nil
+			}
+			if !within(root, real) {
+				skipped[skipOutsidePath]++
+				return nil
+			}
+			if info, err = os.Stat(real); err != nil {
+				skipped[skipUnreadable]++
+				return nil
+			}
+			// The name rules hold for the file the link leads to, so
+			// notes.txt -> .env does not send .env under another name.
+			rel, _ := filepath.Rel(root, real)
+			if reason := targetNameSkip(rel); reason != "" && info.Mode().IsRegular() {
+				skipped[reason]++
+				return nil
+			}
+		}
+		if !info.Mode().IsRegular() {
+			skipped[skipNotRegular]++
+			return nil
+		}
+		if info.Size() > maxDirFileBytes {
+			skipped[skipTooLarge]++
 			return nil
 		}
 
 		files = append(files, path)
 		return nil
 	})
+	return files, skipped, err
+}
 
+// targetNameSkip applies the walk's name rules to a link's target, given by
+// its path under the root: a dot or excluded directory on the way, then the
+// file's own name. It returns the skip reason, or "" to read the file.
+func targetNameSkip(rel string) string {
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, dir := range parts[:len(parts)-1] {
+		if strings.HasPrefix(dir, ".") {
+			return skipDotfile
+		}
+		if shouldExcludeDir(dir) {
+			return skipExcludedDir
+		}
+	}
+	name := parts[len(parts)-1]
+	switch {
+	case strings.HasPrefix(name, "."):
+		return skipDotfile
+	case isCredentialName(name):
+		return skipCredential
+	case !hasTextExtension(name):
+		return skipNotText
+	}
+	return ""
+}
+
+// within reports whether path is root or lies under it. Both are clean,
+// absolute and resolved through symlinks.
+func within(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// isCredentialName reports whether a file's name marks it as holding a
+// credential: credentials*, secret*, *token*, *.key, *.pem, and service
+// account files (*service-account*, *service_account*, *serviceaccount*).
+// A directory run skips these; README "Limits" states the same list.
+func isCredentialName(name string) bool {
+	n := strings.ToLower(name)
+	switch strings.ToLower(filepath.Ext(n)) {
+	case ".key", ".pem":
+		return true
+	}
+	for _, p := range []string{"credentials", "secret"} {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	for _, s := range []string{"token", "service-account", "service_account", "serviceaccount"} {
+		if strings.Contains(n, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath string, result *ExtractRelevantResult) error {
+	// Walk the real directory, so a --path that is itself a link to a
+	// directory is read and the files under it are judged against it.
+	root, err := filepath.Abs(dirPath)
+	if err == nil {
+		root, err = filepath.EvalSymlinks(root)
+	}
+	if err != nil {
+		return fmt.Errorf("cannot resolve path: %w", err)
+	}
+	files, skipped, err := collectDirFiles(root)
 	if err != nil {
 		return fmt.Errorf("failed to walk directory: %w", err)
 	}
+	if len(skipped) > 0 {
+		result.Skipped = skipped
+	}
+	dirPath = root
 
 	result.TotalFiles = len(files)
 
@@ -737,6 +870,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			M:    result.Model,
 			BS:   result.BytesSent,
 			Tr:   result.Truncated,
+			SK:   result.Skipped,
 			Help: result.Help,
 		}
 	} else {
@@ -827,6 +961,9 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	if result.Truncated != "" {
 		lead += fmt.Sprintf("TRUNCATED: %s\n", result.Truncated)
 	}
+	if len(result.Skipped) > 0 {
+		lead += "SKIPPED: " + skippedSummary(result.Skipped) + "\n"
+	}
 	switch {
 	case lead != "" && parts != "":
 		return lead + "\n" + parts
@@ -837,6 +974,20 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	default:
 		return parts
 	}
+}
+
+// skippedSummary renders the skip counts as "2 dotfile, 1 too_large", in
+// reason order.
+func skippedSummary(skipped map[string]int) string {
+	reasons := make([]string, 0, len(skipped))
+	for r := range skipped {
+		reasons = append(reasons, r)
+	}
+	sort.Strings(reasons)
+	for i, r := range reasons {
+		reasons[i] = fmt.Sprintf("%d %s", skipped[r], r)
+	}
+	return strings.Join(reasons, ", ")
 }
 
 func init() {
