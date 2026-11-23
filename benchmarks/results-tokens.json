@@ -1,7 +1,7 @@
 {
-  "version": "2.1.0-4-g7f518e7",
+  "version": "2.1.0-6-gefa9e6e",
   "date": "2026-11-23",
-  "note": "built from the v2.1.1 release-prep branch, whose extract-links output is the same as v2.1.0's; re-run ./benchmarks/tokens.sh -bin <binary> to re-measure",
+  "note": "built from the v2.1.1 release branch before merge; its extract-links --axi output is the release's. The release checklist re-runs ./benchmarks/tokens.sh on the tag commit and moves version and date there",
   "fixture": "benchmarks/fixtures/docs-page.html",
   "fixture_bytes": 15411,
   "command": "llm-extract extract-links --url https://docs.example.com/docs/getting-started/ --axi",
