@@ -596,6 +596,13 @@ func collectDirFiles(root string) ([]string, map[string]int, error) {
 				skipped[skipUnreadable]++
 				return nil
 			}
+			// The name rules hold for the file the link leads to, so
+			// notes.txt -> .env does not send .env under another name.
+			rel, _ := filepath.Rel(root, real)
+			if reason := targetNameSkip(rel); reason != "" && info.Mode().IsRegular() {
+				skipped[reason]++
+				return nil
+			}
 		}
 		if !info.Mode().IsRegular() {
 			skipped[skipNotRegular]++
@@ -610,6 +617,31 @@ func collectDirFiles(root string) ([]string, map[string]int, error) {
 		return nil
 	})
 	return files, skipped, err
+}
+
+// targetNameSkip applies the walk's name rules to a link's target, given by
+// its path under the root: a dot or excluded directory on the way, then the
+// file's own name. It returns the skip reason, or "" to read the file.
+func targetNameSkip(rel string) string {
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, dir := range parts[:len(parts)-1] {
+		if strings.HasPrefix(dir, ".") {
+			return skipDotfile
+		}
+		if shouldExcludeDir(dir) {
+			return skipExcludedDir
+		}
+	}
+	name := parts[len(parts)-1]
+	switch {
+	case strings.HasPrefix(name, "."):
+		return skipDotfile
+	case isCredentialName(name):
+		return skipCredential
+	case !hasTextExtension(name):
+		return skipNotText
+	}
+	return ""
 }
 
 // within reports whether path is root or lies under it. Both are clean,

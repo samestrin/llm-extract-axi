@@ -341,3 +341,32 @@ func TestModelErrorDoesNotPrintBaseURLSecrets(t *testing.T) {
 		}
 	}
 }
+
+// Defends EST-8274 items 1 and 3 together: the name rules looked at a link's
+// own name, so notes.txt -> .env or a.md -> credentials.json inside --path
+// sent the secret under an innocent name. A link is judged by the file it
+// leads to as well.
+func TestExtractRelevantLinkJudgedByTarget(t *testing.T) {
+	calls, prompts := countingLLM(t, "NONE")
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		".env":             "SECRET_DOTENV",
+		".aws/config.txt":  "SECRET_DOTDIR",
+		"credentials.json": "SECRET_CREDS",
+		"plain.txt":        "plain notes",
+	})
+	symlink(t, ".env", filepath.Join(dir, "notes.txt"))
+	symlink(t, filepath.Join(".aws", "config.txt"), filepath.Join(dir, "aws.txt"))
+	symlink(t, "credentials.json", filepath.Join(dir, "a.md"))
+
+	code, out := runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if p := prompts(); strings.Contains(p, "SECRET") {
+		t.Errorf("a secret went out under a link's name:\n%s", p)
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("%d model calls, want 1 (plain.txt)", n)
+	}
+}

@@ -12,12 +12,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `extract-relevant` no longer reads secrets by default. `--path` is required (it defaulted to the current directory), and a directory run skips dotfiles and dot directories (`.env`, `.npmrc`, `.aws/`) and `*.env` files instead of sending them to the model; name one as `--path` to read it. To keep the old behaviour of a bare run, pass `--path .`.
 - `setup` refuses (exit 2) a `--dir` that is your home directory, where its hooks would run in every session, and a `--dir` that does not exist or is not a directory, instead of creating it.
+- An `extract-relevant` directory run reads only regular files whose real path is inside `--path`. A symlink out of the directory sent the file it led to, and a link to `/dev/zero` or a FIFO hung the run; both are now skipped.
+- An `extract-relevant` directory run skips files named like credentials: `credentials*`, `secret*`, `*token*`, `*.key`, `*.pem` and service-account files (`*service-account*`, `*service_account*`, `*serviceaccount*`), case ignored. `credentials.json` and `secrets.yaml` were sent. Name one as `--path` to read it. The rules go by name: other files are sent as they are, and `.gitignore` is not read (the README and `docs/output.md` say so).
+- `setup` refuses (exit 2), writing nothing, when `.claude`, `.codex`, `.opencode` or a settings file is a symlink that leads outside `--dir`. It wrote through the link, so `.claude -> ~/.claude` installed a hook for every session.
+- A failed model call no longer prints secrets from `OPENAI_BASE_URL`: a password and the values of query parameters named like a key, token, secret or signature are replaced by `REDACTED`, and a base URL that does not parse is not shown.
 
 ### Fixed
 
 - `setup` keeps a settings file's key order, its numbers' digits (a large integer is no longer rounded) and its indent when it adds the hook.
 - A bad number is refused (exit 2) instead of replaced: `fetch --max-bytes` or `--timeout` below 1, `fetch --retries` below 0, `extract-links --timeout` below 1, and `extract-relevant --timeout` or `--concurrency` below 1.
 - `extract-relevant -o` is checked before the first model call; a path that cannot be written exits 2 and costs no call.
+- `fetch --output` is checked before the request: a directory, `newdir/` or a path whose directory does not exist exits 2 and makes no request. It failed after the fetch, with exit 1. The MCP `fetch` tool's `output` gets the same check.
+- An `extract-relevant` directory run reports the files it skipped, counted by reason, in `skipped` (`sk` in `--min`, a `SKIPPED:` line in `--plain`): a file over 100 KB was left out with nothing said.
 - `model` and `bytes_sent` are reported only for model calls that answered; a run whose model was unreachable no longer claims one.
 - `fetch --head` with `--output` is a usage error (exit 2): the file always gets the whole body, so the cut was ignored.
 - An extra argument to `setup`, `extract-links` or `extract-relevant` is reported as the wrong number of arguments, with the command's flags, instead of an unknown command with no commands listed.

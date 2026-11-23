@@ -104,7 +104,8 @@ on the next run, so keep your own notes elsewhere.
 
 --dir must be an existing directory, and not your home directory: hooks there
 would run in every session. setup never prompts, makes no network or model
-call, and never writes outside the project directory.
+call, and never writes outside the project directory: a .claude, .codex or
+.opencode (or a settings file) that links outside it is refused (exit 2).
 
 The result is a TOON document by default: written[] (the files written, or
 under --dry-run the files that would be), unchanged[], dry_run and help[].
