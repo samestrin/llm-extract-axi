@@ -47,11 +47,14 @@ func stubHookBinary(t *testing.T, onPath bool, exe string) {
 	}
 }
 
+// setupExec runs setup under --plain: the tests built on it assert the
+// one-line-per-file text, which --plain keeps. TestSetupResultIsStructured
+// covers the TOON and JSON documents setup prints by default (EST-8259).
 func setupExec(t *testing.T, home string, args ...string) (string, int) {
 	t.Helper()
 	t.Setenv("HOME", home)
 	var out, errb bytes.Buffer
-	code := run(append([]string{"setup"}, args...), &out, &errb)
+	code := run(append([]string{"setup", "--plain"}, args...), &out, &errb)
 	return out.String(), code
 }
 

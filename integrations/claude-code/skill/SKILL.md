@@ -11,6 +11,6 @@ Run `llm-extract` with no arguments to see where the binary is and which command
 - `llm-extract extract-links --url <url> [--context <text>]` lists and ranks links. Network; a model only with --context.
 - `llm-extract extract-relevant --path <file|dir|url> --context <text>` reduces content to what the context needs. Always a model; network only for a URL.
 
-Output is TOON by default; `--plain` prints human-readable text (for `fetch`, the body bytes alone, still cut unless `--full`).
+Output is TOON by default; `--plain` prints human-readable text (for `fetch`, the body bytes alone, still cut unless `--full`; with `--output <file>`, the line `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>`).
 
 A failed fetch or model call exits non-zero with `error` and the reason on stdout in the active output format; it is never reported as an empty result. A failed run may still carry results beside `error` (the unranked links when `extract-links --context` has no API key, the files a directory run finished): treat them as partial. Exit 2 means the command or its configuration is wrong (a bad flag, no API key): fix that before running again. Exit 1 is a run that failed, such as a fetch the server refused; the `help` lines name the next step.

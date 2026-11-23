@@ -76,7 +76,7 @@ func isText(marker string) modeCheck {
 	}
 }
 
-// isExactly: the bytes and nothing else: fetch under --plain, and setup and
+// isExactly: the bytes and nothing else: fetch and setup under --plain, and
 // completion, which no encoding flag changes.
 func isExactly(want *string) modeCheck {
 	return func(t *testing.T, code int, stdout, stderr string) {
@@ -110,8 +110,8 @@ func isConflict(t *testing.T, code int, stdout, stderr string) {
 
 // Defends the epic 09 default: TOON with help[] when no flag is given, today's
 // text behind --plain (and --axi=false), --json and --min as before, --axi an
-// accepted no-op, and --plain with --json refused. setup prints the same bytes
-// in every mode that parses; fetch prints its envelope in TOON or JSON and the
+// accepted no-op, and --plain with --json refused. setup prints TOON, JSON or
+// its --plain lines like the others; fetch prints its envelope in TOON or JSON and the
 // page bytes under --plain (epic 10 reversed epic 09's byte-identical pin). Flipping the default back, or letting
 // --json lose to it, turns a row of this red. completion's row is
 // TestCLICompletionIgnoresTheOutputMode in tests/e2e: cobra binds that
@@ -161,9 +161,11 @@ func TestOutputModeMatrix(t *testing.T) {
 			isTOONWithHelp, isText("the relevant passage"), isJSONWithoutHelp, isTOONWithHelp,
 			isText("the relevant passage"), isTOONWithHelp, isConflict,
 		}},
+		// setup prints a TOON result with help[] since EST-8259 item 9; its
+		// one-line-per-file text moved behind --plain.
 		{"setup", []string{"setup", "--dry-run", "--dir", setupDir}, [7]modeCheck{
-			isExactly(&setupRef), isExactly(&setupRef), isUsage, isExactly(&setupRef),
-			isExactly(&setupRef), isUsage, isUsage,
+			isTOONWithHelp, isExactly(&setupRef), isJSONWithoutHelp, isTOONWithHelp,
+			isExactly(&setupRef), isUsage, isConflict,
 		}},
 	}
 	for _, r := range rows {

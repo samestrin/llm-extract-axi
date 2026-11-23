@@ -178,12 +178,13 @@ func TestFetchCmdFlagsApply(t *testing.T) {
 	}
 }
 
-// Defends against a crash on a legal flag value: --retries -1 must not panic
-// and must still fetch.
+// Defends EST-8259 item 4: --retries -1 used to be accepted and quietly read
+// as 0. A negative count is now refused (exit 2) without a request, and must
+// not panic on the way.
 func TestFetchCmdNegativeRetries(t *testing.T) {
 	srv := pageServer(t, 200, "ok")
 	code, out, errOut := runFetchCmd(t, srv.URL, "--retries", "-1")
-	if code != 0 || out != "ok" {
+	if code != 2 || !strings.Contains(out, "--retries") {
 		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
 	}
 }
@@ -241,12 +242,13 @@ func TestFetchCmdMaxBytesEnvOverride(t *testing.T) {
 	}
 }
 
-// Defends --max-bytes 0 falling back to the default rather than erroring or
-// reading nothing, matching how --timeout/--retries treat a non-positive value.
-func TestFetchCmdMaxBytesZeroUsesDefault(t *testing.T) {
+// Defends EST-8259 item 4: --max-bytes 0 used to fall back silently to the
+// 16 MiB default, so a caller asking for a tiny cap got the largest one. It
+// is refused (exit 2) instead, as --head 0 is.
+func TestFetchCmdMaxBytesZeroIsRefused(t *testing.T) {
 	srv := pageServer(t, 200, "small")
 	code, out, errOut := runFetchCmd(t, srv.URL, "--max-bytes", "0")
-	if code != 0 || out != "small" {
-		t.Fatalf("--max-bytes 0 broke a normal body: code=%d out=%q err=%q", code, out, errOut)
+	if code != 2 || !strings.Contains(out, "--max-bytes") {
+		t.Fatalf("--max-bytes 0 not refused: code=%d out=%q err=%q", code, out, errOut)
 	}
 }

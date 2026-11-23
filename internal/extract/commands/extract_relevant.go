@@ -143,7 +143,7 @@ API Configuration:
   Optionally set OPENAI_BASE_URL and OPENAI_MODEL for custom endpoints.
   ANTHROPIC_API_KEY needs OPENAI_BASE_URL: the client speaks the
   OpenAI-compatible API and never sends that key to the OpenAI default.`,
-		Args: cobra.NoArgs,
+		Args: noArgs,
 		// Load-bearing, not redundant: cobra (command.go:1132) silences usage
 		// only when cmd.SilenceUsage || c.SilenceUsage, where c is the command
 		// Execute() was called on. The unit tests build this command fresh with
@@ -182,6 +182,19 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	// Validate context is provided
 	if extractRelevantContext == "" {
 		return output.UsageError(fmt.Errorf("--context is required"))
+	}
+	// Bad numbers and an unwritable -o are refused before any model call:
+	// --timeout 0 used to fail every call, and a bad -o failed after them all.
+	if err := atLeast("timeout", extractRelevantTimeout, 1); err != nil {
+		return err
+	}
+	if err := atLeast("concurrency", extractRelevantConcurrency, 1); err != nil {
+		return err
+	}
+	if extractRelevantOutput != "" {
+		if err := checkWritable(extractRelevantOutput); err != nil {
+			return err
+		}
 	}
 
 	// Load API configuration
@@ -261,6 +274,36 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return nil
+}
+
+// checkWritable reports whether path can be written as the -o file, without
+// writing it: an existing file is opened for writing and left as it was, and
+// for a new file its directory is tested with a temporary file that is
+// removed at once. Failure is a usage error: the same -o never works.
+func checkWritable(path string) error {
+	refuse := func(err error) error {
+		return output.UsageError(fmt.Errorf("cannot write -o %s: %w", path, err))
+	}
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && info.IsDir():
+		return refuse(errors.New("it is a directory"))
+	case err == nil:
+		f, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return refuse(err)
+		}
+		return f.Close()
+	case !errors.Is(err, os.ErrNotExist):
+		return refuse(err)
+	}
+	f, err := os.CreateTemp(filepath.Dir(path), ".llm-extract-check-*")
+	if err != nil {
+		return refuse(err)
+	}
+	name := f.Name()
+	_ = f.Close()
+	return os.Remove(name)
 }
 
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
@@ -617,10 +660,16 @@ Rules:
 		llmPromptsCut.Add(1)
 	}
 
-	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	return client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	answer, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	if err != nil {
+		return "", err
+	}
+	// Counted once the call has answered, so a model that was never reached
+	// is not reported as used.
+	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+	return answer, nil
 }
 
 func shouldExcludeDir(name string) bool {

@@ -139,7 +139,10 @@ never printed: body is empty and truncated is true; save it with --output.
   --plain    print the body bytes alone, still cut at --head unless --full;
              a one-line size hint goes to stderr when the body was cut
   --json     the same document as JSON
-  --output   save the whole body to a file; the document leaves body out
+  --output   save the whole body to a file; the document leaves body out,
+             and --plain prints one line instead of the body:
+             Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>
+             --head cannot be used with --output
   --fields   print only these envelope fields, comma-separated: url,
              final_url, status, tier, format, content_type, bytes, truncated,
              output, body, help. Composes with --json and --output; --plain
@@ -200,6 +203,21 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	}
 	if fetchFull && cmd.Flags().Changed("head") {
 		return fmt.Errorf("invalid argument %q for \"--head\" flag: --head and --full cannot be used together", fmt.Sprint(fetchHead))
+	}
+	// --output saves the whole body, so a cut there would be silently ignored.
+	if fetchOutput != "" && cmd.Flags().Changed("head") {
+		return fmt.Errorf("invalid argument %q for \"--head\" flag: --head and --output cannot be used together: --output saves the whole body", fmt.Sprint(fetchHead))
+	}
+	// A bad number is refused, never swapped for the default: --max-bytes 0
+	// used to mean 16 MiB and --timeout -1 thirty seconds.
+	if err := atLeast("max-bytes", fetchMaxBytes, 1); err != nil {
+		return err
+	}
+	if err := atLeast("timeout", fetchTimeout, 1); err != nil {
+		return err
+	}
+	if err := atLeast("retries", fetchRetries, 0); err != nil {
+		return err
 	}
 	// Also before the URL: a bad field list never costs a request, and under
 	// --plain it never writes the --output file. --plain prints no envelope,
@@ -289,6 +307,15 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	}
 	out.Body = &body
 	return printFetchResult(w, out, fields)
+}
+
+// atLeast refuses a numeric flag below min, in cobra's wording for a bad flag
+// value, which output.ExitCodeFor reads as exit 2.
+func atLeast(flag string, v, min int) error {
+	if v < min {
+		return fmt.Errorf("invalid argument %q for \"--%s\" flag: must be %d or more", fmt.Sprint(v), flag, min)
+	}
+	return nil
 }
 
 // printFetchResult writes the envelope as JSON under --json and as TOON
