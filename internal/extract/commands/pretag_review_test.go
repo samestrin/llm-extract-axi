@@ -57,6 +57,10 @@ func TestExtractRelevantDirectoryStaysInsidePath(t *testing.T) {
 	symlink(t, "/dev/zero", filepath.Join(dir, "zero.txt"))
 	symlink(t, "in.txt", filepath.Join(dir, "alias.txt"))
 	symlink(t, "missing.txt", filepath.Join(dir, "dangling.txt"))
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlink(t, "sub", filepath.Join(dir, "dirlink.txt"))
 
 	code, out := runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--json")
 	if code != 0 {
@@ -72,7 +76,7 @@ func TestExtractRelevantDirectoryStaysInsidePath(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]int{"outside_path": 2, "not_regular": 1, "unreadable": 1}
+	want := map[string]int{"outside_path": 3, "not_regular": 1, "unreadable": 1}
 	for reason, n := range want {
 		if got.Skipped[reason] != n {
 			t.Errorf("skipped[%s] = %d, want %d: %v", reason, got.Skipped[reason], n, got.Skipped)
