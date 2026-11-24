@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The MCP `fetch` tool passes the url after `--`, so a url that looks like a flag (`--output=...`) is taken as the url and fails, instead of being parsed as a flag.
 
+### Changed
+
+- `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `196d678`, the commit the `v2.1.1` tag carries; every `file:line` pointer was re-checked and every probe re-run there. Rows 4, 6 and 7 and the catalog's observations now state the v2.1.1 fixes: an `extract-relevant` directory run's `skipped` counts and what it skips, `setup` refusing a link out of `--dir`, `fetch --output` checked before the request, and base-URL secrets redacted from model errors. The token benchmark re-run at `v2.1.1` gives the same 4240 and 1432 counts (3.0x), and `benchmarks/results-tokens.json` names `2.1.1`.
+
 ### Fixed
 
 - `extract-relevant --path` naming a FIFO or a device (`/dev/zero`, or a link to one) is an error instead of a run that hung or read without end, and a named file is read only as far as the model's 30,000-byte input.
