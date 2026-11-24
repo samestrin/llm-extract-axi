@@ -1,7 +1,7 @@
 {
-  "version": "2.1.0-2-g2a6c41a",
-  "date": "2026-11-23",
-  "note": "built from PR #77's merge commit on main, reviewed by the v2.1.1 audit and catalog; re-run ./benchmarks/tokens.sh -bin <binary> to re-measure",
+  "version": "2.1.1",
+  "date": "2026-11-24",
+  "note": "built from the v2.1.1 tag (196d678), reviewed by the v2.1.1 audit and catalog; re-run ./benchmarks/tokens.sh -bin <binary> to re-measure",
   "fixture": "benchmarks/fixtures/docs-page.html",
   "fixture_bytes": 15411,
   "command": "llm-extract extract-links --url https://docs.example.com/docs/getting-started/ --axi",
