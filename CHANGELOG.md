@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `196d678`, the commit the `v2.1.1` tag carries; every `file:line` pointer was re-checked and every probe re-run there. Rows 4, 6 and 7 and the catalog's observations now state the v2.1.1 fixes: an `extract-relevant` directory run's `skipped` counts and what it skips, `setup` refusing a link out of `--dir`, `fetch --output` checked before the request, and base-URL secrets redacted from model errors. The token benchmark re-run at `v2.1.1` gives the same 4240 and 1432 counts (3.0x), and `benchmarks/results-tokens.json` names `2.1.1`.
+- The catalog entry's `domain` is `Web data / Extraction`, the domain the axi.md submission (kunchenguid/axi#291) uses.
 
 ### Fixed
 
