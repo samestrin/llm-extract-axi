@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- Written for llm-extract's tests. Not copied from any live site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Retrying HTTP requests without making things worse</title>
+  <meta property="og:title" content="Retrying HTTP requests without making things worse">
+  <meta property="article:author" content="Kenji Abe">
+</head>
+<body>
+  <div class="navbar">
+    <ul class="nav-links">
+      <li><a href="/">Home</a></li>
+      <li><a href="/tags/go/">Go</a></li>
+      <li><a href="/tags/distributed-systems/">Distributed systems</a></li>
+      <li><a href="/talks/">Conference talks</a></li>
+      <li><a href="/hire-me/">Hire me</a></li>
+    </ul>
+  </div>
+
+  <div class="container">
+    <div class="post-content">
+      <h1>Retrying HTTP requests without making things worse</h1>
+      <p>Retries look like a free reliability win, but a naive retry loop turns a brief outage into a long one by multiplying the load on a server that is already struggling.</p>
+
+      <p>This post walks through the three rules I now apply to every retry loop I write: retry only what is safe to repeat, back off exponentially with jitter, and give up after a budget rather than a count.</p>
+
+      <h2>Only retry what is safe</h2>
+      <p>A GET is safe to repeat. A POST that charges a card is not, unless the server accepts an idempotency key. If you cannot tell whether a request is safe, do not retry it automatically; surface the error and let a person decide.</p>
+
+      <h2>Back off with jitter</h2>
+      <p>If a thousand clients all retry after exactly one second, the server sees a thousand requests at once, every second. Adding random jitter spreads those retries out so the server can recover.</p>
+      <pre><code class="language-go">func backoff(attempt int) time.Duration {
+	base := 100 * time.Millisecond &lt;&lt; attempt
+	return base/2 + time.Duration(rand.Int63n(int64(base/2)))
+}</code></pre>
+
+      <h2>Spend a budget, not a count</h2>
+      <p>Five retries with exponential backoff can take minutes. Give the whole operation a deadline with a context, and stop retrying when the deadline would pass before the next attempt finishes.</p>
+    </div>
+
+    <div class="share-buttons">
+      <a href="#">Share on Mastodon</a>
+      <a href="#">Share on LinkedIn</a>
+    </div>
+  </div>
+
+  <div class="site-footer">
+    <span>Kenji Abe writes about backend systems.</span>
+    <a href="/privacy/">Privacy policy</a>
+  </div>
+
+  <div id="cookie-popup" class="overlay">
+    <p>Analytics cookies help me see which posts are useful.</p>
+    <button>Allow</button><button>Decline</button>
+  </div>
+</body>
+</html>

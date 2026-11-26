@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Written for llm-extract's tests. Not copied from any live site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sign in - Ledgerly</title>
+</head>
+<body class="auth">
+  <div class="auth-box">
+    <img src="/logo.svg" alt="Ledgerly">
+    <h1>Sign in to your account</h1>
+    <form method="post" action="/session">
+      <label for="email">Email address</label>
+      <input id="email" type="email" name="email" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" name="password" required>
+      <label><input type="checkbox" name="remember"> Keep me signed in</label>
+      <button type="submit">Sign in</button>
+    </form>
+    <a href="/forgot">Forgot your password?</a>
+    <span>New here? <a href="/signup">Create an account</a></span>
+  </div>
+  <footer class="auth-footer"><a href="/privacy">Privacy</a> <a href="/terms">Terms</a></footer>
+</body>
+</html>
