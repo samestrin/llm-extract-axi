@@ -146,13 +146,13 @@ func TestFetchCmdJSON(t *testing.T) {
 }
 
 // Defends input validation: non-http URLs, a bad --format and the formats not
-// yet ported are errors rather than being fetched or ignored.
+// yet ported are errors rather than being fetched or ignored. --format
+// markdown is accepted now (epic 11 T3; fetch_markdown_test.go).
 func TestFetchCmdRejectsBadInput(t *testing.T) {
 	srv := pageServer(t, 200, "x")
 	for _, args := range [][]string{
 		{"ftp://example.com"},
 		{"example.com"},
-		{srv.URL, "--format", "markdown"},
 		{srv.URL, "--format", "text"},
 		{srv.URL, "--format", "bogus"},
 		{},
