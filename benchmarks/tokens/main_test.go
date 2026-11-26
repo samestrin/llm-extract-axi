@@ -1,16 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 )
 
 const fixture = "../fixtures/docs-page.html"
+
+// fixturesList is the readable package's committed fixture list: the 10 pages
+// the Markdown benchmark measures (T1's fixtures, including docs-page.html).
+const fixturesList = "../../internal/extract/readable/testdata/fixtures.json"
 
 // builtBinary returns ../../build/llm-extract, failing (not skipping) when it is
 // absent: a skipped benchmark test is one nobody notices has stopped running.
@@ -33,9 +39,15 @@ func builtBinary(t *testing.T) string {
 // TestMain lets the test binary stand in for a failing llm-extract, so the
 // non-zero-exit path is tested without a shell script per platform.
 func TestMain(m *testing.M) {
-	if os.Getenv("BENCH_FAKE_EXTRACT") == "fail" {
+	switch os.Getenv("BENCH_FAKE_EXTRACT") {
+	case "fail":
 		fmt.Fprintln(os.Stderr, "fake extract-links failure")
 		os.Exit(1)
+	case "markdown":
+		// A fake that always succeeds with a Markdown body, so the benchmark's
+		// refusal of a no-main-content page that "succeeds" can be tested.
+		fmt.Print("# fake\n\nmarkdown body\n")
+		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
@@ -137,10 +149,11 @@ func TestChildEnvCannotReachOut(t *testing.T) {
 	t.Setenv("MY_ANTHROPIC_API_KEY", "sk-ant-prefixed")
 	t.Setenv("CORP_OPENAI_BASE_URL", "https://corp.example.com")
 	t.Setenv("NO_PROXY", "*")
+	t.Setenv("FETCH_TIMEOUT", "1s")
 	t.Setenv("BENCH_KEEP_ME", "1")
 	env := envByName(childEnv())
 	for _, banned := range []string{"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_BASE_URL",
-		"LLM_OPENAI_API_KEY", "MY_ANTHROPIC_API_KEY", "CORP_OPENAI_BASE_URL", "NO_PROXY"} {
+		"LLM_OPENAI_API_KEY", "MY_ANTHROPIC_API_KEY", "CORP_OPENAI_BASE_URL", "NO_PROXY", "FETCH_TIMEOUT"} {
 		if v, ok := env[banned]; ok {
 			t.Errorf("child env carries %s=%s", banned, v)
 		}
@@ -211,11 +224,7 @@ type tokenResults struct {
 		Cl100k counts `json:"cl100k_base"`
 		O200k  counts `json:"o200k_base"`
 	} `json:"tiktoken"`
-}
-
-type counts struct {
-	Raw int `json:"raw"`
-	AXI int `json:"axi"`
+	Markdown markdownResults `json:"markdown"`
 }
 
 func readResults(t *testing.T) tokenResults {
@@ -251,13 +260,30 @@ func TestQuotedTokenCountsMatchARun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sumRaw, sumMD, measured := 0, 0, 0
+	for _, f := range r.Markdown.Fixtures {
+		if f.Error == "" {
+			sumRaw += f.Raw
+			sumMD += f.Markdown
+			measured++
+		}
+	}
+	mdSummary := ""
+	if measured > 0 {
+		mdSummary = fmt.Sprintf("Across the %d fixtures with main content: %d raw tokens vs %d Markdown tokens (%.1fx)",
+			measured, sumRaw, sumMD, float64(sumRaw)/float64(sumMD))
+	}
 	for _, want := range []string{
 		fmt.Sprintf("raw page      %d tokens", r.Counter.Raw),
 		fmt.Sprintf("--axi output  %d tokens", r.Counter.AXI),
 		"ratio         " + ratio,
 		fmt.Sprintf("%d vs %d tokens with `cl100k_base`", r.Tiktoken.Cl100k.Raw, r.Tiktoken.Cl100k.AXI),
 		fmt.Sprintf("%d vs %d with `o200k_base`", r.Tiktoken.O200k.Raw, r.Tiktoken.O200k.AXI),
+		mdSummary,
 	} {
+		if want == "" {
+			continue
+		}
 		if !strings.Contains(string(readme), want) {
 			t.Errorf("benchmarks/README.md does not quote %q from results-tokens.json", want)
 		}
@@ -283,5 +309,269 @@ func TestQuotedTokenCountsMatchARun(t *testing.T) {
 		if !strings.Contains(string(entry), want) {
 			t.Errorf("docs/axi-catalog-entry.yaml does not quote %q from results-tokens.json", want)
 		}
+	}
+
+	// EST-8801: the committed Markdown counts must equal a fresh run on the
+	// 10 fixtures, and the committed table must be the render of the committed
+	// JSON. Before this, the Markdown figures had no committed source at all.
+	md, err := measureMarkdown(builtBinary(t), fixturesList, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Markdown.Fixtures) != len(md.Fixtures) {
+		t.Fatalf("results-tokens.json markdown has %d fixtures, a run measures %d; run `make bench-tokens`",
+			len(r.Markdown.Fixtures), len(md.Fixtures))
+	}
+	for i, c := range r.Markdown.Fixtures {
+		f := md.Fixtures[i]
+		// Committed fixture paths are repository-relative; a test run resolves
+		// them from benchmarks/tokens, two levels down.
+		cPath := filepath.Clean(filepath.Join("..", "..", c.Fixture))
+		if c.Name != f.Name || c.RawBytes != f.RawBytes || c.Raw != f.Raw ||
+			c.Markdown != f.Markdown || c.Error != f.Error || cPath != filepath.Clean(f.Fixture) {
+			t.Errorf("results-tokens.json markdown[%d] is %+v, a run gives %+v; run `make bench-tokens`", i, c, f)
+		}
+	}
+	committed, err := os.ReadFile(filepath.Join("..", "results-tokens.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rf resultsFile
+	if err := json.Unmarshal(committed, &rf); err != nil {
+		t.Fatal(err)
+	}
+	table, err := os.ReadFile(filepath.Join("..", "results-tokens.md"))
+	if err != nil {
+		t.Fatalf("results-tokens.md is missing (%v); run `make bench-tokens`", err)
+	}
+	if string(table) != renderResults(rf) {
+		t.Error("benchmarks/results-tokens.md is not the render of results-tokens.json; run `make bench-tokens`, never edit the table by hand")
+	}
+}
+
+// Defends the Markdown measurement (EST-8801): all 10 committed fixtures are
+// measured, the two pages with no main content record the named error instead
+// of a zero-count success, and the loopback origin is replaced before counting.
+func TestMeasureMarkdownOnTheTenFixtures(t *testing.T) {
+	md, err := measureMarkdown(builtBinary(t), fixturesList, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(md.Fixtures) != 10 {
+		t.Fatalf("measured %d fixtures, the plan measures 10", len(md.Fixtures))
+	}
+	noMain := 0
+	for _, f := range md.Fixtures {
+		if f.Raw <= 0 || f.RawBytes <= 0 {
+			t.Errorf("%s: raw page not counted: %+v", f.Name, f)
+		}
+		if f.Error != "" {
+			noMain++
+			if f.Error != "no main content" || f.Markdown != 0 {
+				t.Errorf("%s: error row is wrong: %+v", f.Name, f)
+			}
+			continue
+		}
+		if f.Markdown <= 0 {
+			t.Errorf("%s: Markdown not counted: %+v", f.Name, f)
+		}
+		if strings.Contains(f.output, "127.0.0.1") {
+			t.Errorf("%s: the loopback origin was not replaced before counting:\n%s", f.Name, f.output)
+		}
+	}
+	if noMain != 2 {
+		t.Errorf("%d fixtures recorded no main content, the fixture list has 2", noMain)
+	}
+}
+
+// Defends "reproducible" for the Markdown case: resolved links carry the
+// loopback port, so two runs must count the same text and give the same numbers.
+func TestMeasureMarkdownIsReproducible(t *testing.T) {
+	bin := builtBinary(t)
+	a, err := measureMarkdown(bin, fixturesList, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := measureMarkdown(bin, fixturesList, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("two Markdown runs differ:\n%+v\n%+v", a, b)
+	}
+}
+
+// Defends "nothing reports success when it did not succeed": a failed fetch is
+// an error for the whole benchmark, never a table with a hole in it.
+func TestMeasureMarkdownFailsWhenFetchFails(t *testing.T) {
+	t.Setenv("BENCH_FAKE_EXTRACT", "fail")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := measureMarkdown(self, fixturesList, &strings.Builder{}); err == nil {
+		t.Fatal("a failed fetch produced Markdown results")
+	}
+}
+
+// Defends the error rows: a page the fixture list marks as having no main
+// content must fail. A fetch that "succeeds" there means the fixture or the
+// extraction changed, and a count from it would be a lie.
+func TestMeasureMarkdownFailsWhenNoArticleSucceeds(t *testing.T) {
+	t.Setenv("BENCH_FAKE_EXTRACT", "markdown")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = measureMarkdown(self, fixturesList, &strings.Builder{})
+	if err == nil || !strings.Contains(err.Error(), "no-article") {
+		t.Fatalf("err = %v, want the no-article fixture named", err)
+	}
+}
+
+// Defends the inputs: a missing fixture list is an error, not zero fixtures.
+func TestMeasureMarkdownFailsOnMissingFixtureList(t *testing.T) {
+	if _, err := measureMarkdown(builtBinary(t), "no-such-fixtures.json", &strings.Builder{}); err == nil {
+		t.Fatal("a missing fixture list produced results")
+	}
+}
+
+// Defends the committed results on a failed run: nothing is written unless
+// every measurement passed, so a failure leaves the committed files as they were.
+func TestRunAllWritesNothingOnFailure(t *testing.T) {
+	t.Setenv("BENCH_FAKE_EXTRACT", "fail")
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	o := options{bin: self, fixture: fixture, fixtures: fixturesList,
+		jsonPath: filepath.Join(dir, "results.json"), mdPath: filepath.Join(dir, "results.md")}
+	for _, p := range []string{o.jsonPath, o.mdPath} {
+		if err := os.WriteFile(p, []byte("sentinel"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := runAll(o, &strings.Builder{}); err == nil {
+		t.Fatal("a failed run reported success")
+	}
+	for _, p := range []string{o.jsonPath, o.mdPath} {
+		b, err := os.ReadFile(p)
+		if err != nil || string(b) != "sentinel" {
+			t.Errorf("%s was touched by a failed run: %q (%v)", p, b, err)
+		}
+	}
+}
+
+// Defends the regeneration (EST-8801): a full run writes the JSON with fresh
+// counts, preserves the hand-counted tiktoken section verbatim, and writes a
+// table that is exactly the render of that JSON.
+func TestRunAllWritesResultsAndTable(t *testing.T) {
+	dir := t.TempDir()
+	committed, err := os.ReadFile(filepath.Join("..", "results-tokens.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := options{bin: builtBinary(t), fixture: fixture, fixtures: fixturesList,
+		jsonPath: filepath.Join(dir, "results.json"), mdPath: filepath.Join(dir, "results.md")}
+	if err := os.WriteFile(o.jsonPath, committed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runAll(o, &strings.Builder{}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(o.jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rf resultsFile
+	if err := json.Unmarshal(b, &rf); err != nil {
+		t.Fatal(err)
+	}
+	if rf.Version == "" || rf.Date == "" {
+		t.Errorf("no version/date recorded: %+v", rf)
+	}
+	var old resultsFile
+	if err := json.Unmarshal(committed, &old); err != nil {
+		t.Fatal(err)
+	}
+	// The figures must survive; indentation may be normalized by the writer.
+	var oldCompact, newCompact bytes.Buffer
+	if err := json.Compact(&oldCompact, old.Tiktoken); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Compact(&newCompact, rf.Tiktoken); err != nil {
+		t.Fatal(err)
+	}
+	if oldCompact.String() != newCompact.String() {
+		t.Errorf("tiktoken section was not preserved: %s -> %s", oldCompact.String(), newCompact.String())
+	}
+	md, err := measureMarkdown(o.bin, fixturesList, &strings.Builder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compare the serialized sections: the fresh run also carries the counted
+	// text in an unexported field, which the JSON file does not store.
+	written, err := json.Marshal(rf.Markdown)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := json.Marshal(md)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != string(fresh) {
+		t.Errorf("written markdown section differs from a fresh run:\n%s\n%s", written, fresh)
+	}
+	table, err := os.ReadFile(o.mdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(table) != renderResults(rf) {
+		t.Error("the written table is not the render of the written JSON")
+	}
+}
+
+// Defends the tiktoken figures: they are counted by hand and cannot be
+// re-measured offline, so a regeneration with no committed JSON to preserve
+// them from is an error, not a file that silently drops them.
+func TestRunAllFailsWhenResultsJSONMissing(t *testing.T) {
+	dir := t.TempDir()
+	o := options{bin: builtBinary(t), fixture: fixture, fixtures: fixturesList,
+		jsonPath: filepath.Join(dir, "absent.json"), mdPath: filepath.Join(dir, "results.md")}
+	if err := runAll(o, &strings.Builder{}); err == nil {
+		t.Fatal("a run with no committed JSON to preserve tiktoken from reported success")
+	}
+	if _, err := os.Stat(o.mdPath); err == nil {
+		t.Error("a failed run wrote the table")
+	}
+}
+
+// Defends the same figures against a committed file that cannot carry them:
+// corrupt JSON, or JSON with no tiktoken section, fails the regeneration
+// instead of writing a results file without the hand-counted counts.
+func TestRunAllFailsWhenTiktokenCannotBePreserved(t *testing.T) {
+	for name, content := range map[string]string{
+		"corrupt":     "not json",
+		"no-tiktoken": `{"counter": {"raw": 1, "axi": 1}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			o := options{bin: builtBinary(t), fixture: fixture, fixtures: fixturesList,
+				jsonPath: filepath.Join(dir, "results.json"), mdPath: filepath.Join(dir, "results.md")}
+			if err := os.WriteFile(o.jsonPath, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := runAll(o, &strings.Builder{}); err == nil {
+				t.Fatal("a run that cannot preserve tiktoken reported success")
+			}
+			b, err := os.ReadFile(o.jsonPath)
+			if err != nil || string(b) != content {
+				t.Errorf("the committed file was touched: %q (%v)", b, err)
+			}
+			if _, err := os.Stat(o.mdPath); err == nil {
+				t.Error("a failed run wrote the table")
+			}
+		})
 	}
 }

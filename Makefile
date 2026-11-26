@@ -1,4 +1,4 @@
-.PHONY: build build-all test test-race test-cover test-scripts cover-gate lint vet fmt golangci install clean hooks
+.PHONY: build build-all test test-race test-cover test-scripts cover-gate bench-tokens lint vet fmt golangci install clean hooks
 
 MODULE    := github.com/samestrin/llm-extract-axi/v2
 BUILD_DIR := build
@@ -65,6 +65,12 @@ cover-gate: build
 	env -u OPENAI_API_KEY -u ANTHROPIC_API_KEY -u OPENAI_BASE_URL -u OPENAI_MODEL \
 		go test -coverprofile=coverage.txt -covermode=atomic ./...
 	./scripts/coverage-gate.sh coverage.txt 80
+
+# The token benchmark: extract-links --axi and fetch --format markdown on the
+# committed fixtures, offline (loopback pages, no model, no network). Writes
+# benchmarks/results-tokens.json and renders benchmarks/results-tokens.md.
+bench-tokens: build
+	go run ./benchmarks/tokens
 
 lint: vet fmt golangci
 

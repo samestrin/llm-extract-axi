@@ -1,10 +1,10 @@
 # Benchmarks
 
-Two benchmarks, both offline: [tokens](#token-benchmark) (what `extract-links` saves an agent in tokens) and [performance](#performance-benchmark) (how long `llm-extract` takes).
+Two benchmarks, both offline: [tokens](#token-benchmark) (what `extract-links` and `fetch --format markdown` save an agent in tokens) and [performance](#performance-benchmark) (how long `llm-extract` takes).
 
 # Token benchmark
 
-How much less an agent reads when it asks `extract-links` for a page's links instead of reading the page.
+How much less an agent reads when it asks `extract-links` for a page's links, or `fetch --format markdown` for its main content, instead of reading the page.
 
 ## Result
 
@@ -22,26 +22,31 @@ Measured on 2026-11-11 with the counter described below (1435 tokens then) and r
 
 Every figure above comes from [`results-tokens.json`](results-tokens.json), which names the version and date it was measured on. `TestQuotedTokenCountsMatchARun` (`benchmarks/tokens/main_test.go`) fails when a fresh run of the counter disagrees with that file, or when this page or the catalog entry quotes anything else. The tiktoken counts need the `tiktoken` Python package and its vocabulary, so CI does not re-run them; re-count them by hand when the output changes.
 
+## Markdown case
+
+The same counter also measures `fetch --format markdown` against the raw HTML on the 10 committed fixtures of the readable package (`internal/extract/readable/testdata/fixtures.json`, which includes `fixtures/docs-page.html`). The table is [`results-tokens.md`](results-tokens.md), generated from the `markdown` section of [`results-tokens.json`](results-tokens.json). Across the 8 fixtures with main content: 9642 raw tokens vs 2555 Markdown tokens (3.8x). The two pages with no main content record the named error, never a zero-count success; a fetch that fails, or "succeeds" on a page marked as having no main content, fails the whole benchmark.
+
 ## Rerun it
 
 From the repository root:
 
 ```bash
-./benchmarks/tokens.sh
+make bench-tokens        # build, measure both cases, write results-tokens.json and results-tokens.md
+./benchmarks/tokens.sh   # the same run, building only if build/llm-extract is missing
 ```
 
-It runs `make build` if `build/llm-extract` is missing, then `go run ./benchmarks/tokens`. To measure another page, pass `-fixture path/to/page.html`; to measure another binary, `-bin path/to/llm-extract`.
+A successful run writes the counts to `results-tokens.json` and renders `results-tokens.md` from it; never edit the table by hand. The hand-counted `tiktoken` section of the JSON is preserved, not re-measured. A failed run writes nothing. To measure another page in the extract-links case, pass `-fixture path/to/page.html`; to measure another binary, `-bin path/to/llm-extract`.
 
 The same code runs on every `go test ./...` (`benchmarks/tokens/main_test.go`), so CI fails if the benchmark stops working.
 
 ## No network
 
-- The page is `fixtures/docs-page.html`, served from a server inside the benchmark process on `127.0.0.1`.
-- `llm-extract` runs without `--context`, so it calls no model. Its `OPENAI_*` and `ANTHROPIC_*` variables are removed as well.
+- Every page is a committed fixture, served from a server inside the benchmark process on `127.0.0.1`.
+- `llm-extract` runs without `--context`, so it calls no model. Its `OPENAI_*` and `ANTHROPIC_*` variables are removed as well, and so is its `FETCH_*` tuning.
 - Its `HTTP_PROXY` and `HTTPS_PROXY` point at a closed local port. Go never proxies a loopback request, so the fixture loads; a request to any other host would fail instead of leaving the machine.
 - The token counter is built in. Nothing is downloaded, not even a tokenizer vocabulary.
 
-A failed `extract-links`, or a page with no links, is an error with a non-zero exit, never a ratio.
+A failed `extract-links` or `fetch`, a page with no links, or a Markdown page with no main content where the fixture list expects one, is an error with a non-zero exit, never a ratio.
 
 ## The counter
 
