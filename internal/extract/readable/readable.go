@@ -27,8 +27,9 @@ var ErrNoMainContent = errors.New("no main content found on the page")
 type Article struct {
 	Title  string
 	Byline string
-	// HTML is the cleaned main content as an HTML fragment. Relative links
-	// are resolved against the page URL when one is given.
+	// HTML is the cleaned main content as an HTML fragment. Links are
+	// resolved against the final page URL (or the document's base URL), and
+	// javascript: and data: targets are removed while their text is kept.
 	HTML string
 }
 
@@ -46,13 +47,15 @@ func Extract(r io.Reader, pageURL *url.URL) (Article, error) {
 	if !parser.CheckDocument(doc) {
 		return Article{}, ErrNoMainContent
 	}
-	a, err := parser.ParseAndMutate(doc, pageURL)
+	baseURL := effectiveBaseURL(doc, pageURL)
+	a, err := parser.ParseAndMutate(doc, baseURL)
 	if err != nil {
 		return Article{}, fmt.Errorf("extract main content: %w", err)
 	}
 	if a.Node == nil || strings.TrimSpace(dom.TextContent(a.Node)) == "" {
 		return Article{}, ErrNoMainContent
 	}
+	normalizeLinks(a.Node, baseURL)
 	var buf bytes.Buffer
 	if err := html.Render(&buf, a.Node); err != nil {
 		return Article{}, fmt.Errorf("render main content: %w", err)

@@ -36,7 +36,7 @@ func TestArticleMarkdownFixtures(t *testing.T) {
 				t.Fatalf("Markdown: %v", err)
 			}
 
-			goldenPath := filepath.Join("testdata", "golden", strings.TrimSuffix(f.Path, ".html")+".md")
+			goldenPath := filepath.Join("testdata", "golden", strings.TrimSuffix(filepath.Base(f.Path), ".html")+".md")
 			if *updateGolden {
 				if err := os.MkdirAll(filepath.Dir(goldenPath), 0o755); err != nil {
 					t.Fatal(err)
