@@ -8,23 +8,29 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Defends base discovery for callers that have no final URL, and against a
-// malformed base replacing a valid response URL with an unusable target.
+// Defends base discovery for callers that have no final URL, against a
+// malformed base replacing a valid response URL with an unusable target, and
+// against an empty base preventing discovery of a later usable base.
 func TestEffectiveBaseURLEdgeCases(t *testing.T) {
 	tests := []struct {
-		name    string
-		baseRef string
-		final   string
-		want    string
+		name  string
+		bases []string
+		final string
+		want  string
 	}{
-		{name: "absolute base without final URL", baseRef: "https://static.example.test/manual/", want: "https://static.example.test/manual/"},
-		{name: "malformed base ignored", baseRef: "%", final: "https://example.test/final/page", want: "https://example.test/final/page"},
-		{name: "empty base ignored", baseRef: "", final: "https://example.test/final/page", want: "https://example.test/final/page"},
-		{name: "relative base without final URL", baseRef: "manual/", want: ""},
+		{name: "absolute base without final URL", bases: []string{"https://static.example.test/manual/"}, want: "https://static.example.test/manual/"},
+		{name: "malformed base ignored", bases: []string{"%"}, final: "https://example.test/final/page", want: "https://example.test/final/page"},
+		{name: "empty base ignored", bases: []string{""}, final: "https://example.test/final/page", want: "https://example.test/final/page"},
+		{name: "empty base skipped for next base", bases: []string{"", "https://static.example.test/manual/"}, final: "https://example.test/final/page", want: "https://static.example.test/manual/"},
+		{name: "relative base without final URL", bases: []string{"manual/"}, want: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc, err := html.Parse(strings.NewReader(`<html><head><base href="` + tt.baseRef + `"></head><body></body></html>`))
+			var head strings.Builder
+			for _, baseRef := range tt.bases {
+				head.WriteString(`<base href="` + baseRef + `">`)
+			}
+			doc, err := html.Parse(strings.NewReader(`<html><head>` + head.String() + `</head><body></body></html>`))
 			if err != nil {
 				t.Fatal(err)
 			}
