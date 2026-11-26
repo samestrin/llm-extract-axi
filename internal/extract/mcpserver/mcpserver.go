@@ -133,6 +133,7 @@ var tools = []tool{
 			"full":       prop("boolean", "Return the whole body; not together with head"),
 			"output":     prop("string", "Save the whole body to this file path (absolute, or relative to the server's working directory); the envelope then leaves body out"),
 			"fields":     prop("string", "Comma-separated envelope fields to return, e.g. bytes,truncated,output"),
+			"format":     prop("string", "raw (the body as received, the default) or markdown (the main content of an HTML page as Markdown)"),
 		}),
 		build: func(a args) ([]string, error) {
 			if err := need(a, "url"); err != nil {
@@ -142,9 +143,10 @@ var tools = []tool{
 			out = a.flagInt(out, "timeout", "--timeout")
 			out = a.flagInt(out, "retries", "--retries")
 			out = a.flagStr(out, "user_agent", "--user-agent")
-			// head, full, output and fields pass through unchanged; the CLI
-			// rejects a bad cut, a bad field or a bad combination, so the
-			// server holds no logic of its own.
+			// format, head, full, output and fields pass through unchanged;
+			// the CLI rejects a bad format, a bad cut, a bad field or a bad
+			// combination, so the server holds no logic of its own.
+			out = a.flagStr(out, "format", "--format")
 			out = a.flagInt(out, "head", "--head")
 			out = a.flagBool(out, "full", "--full")
 			out = a.flagStr(out, "output", "--output")

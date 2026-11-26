@@ -55,6 +55,14 @@ func TestBuildMapsArguments(t *testing.T) {
 			[]string{"fetch", "--head", "10", "--full", "--", "http://x"}},
 		// EST-8204 item 1: a cut or binary body tells the caller to run
 		// again with --output <file>; an MCP caller must be able to.
+		// Epic 11 T3: format passes through unchanged; the CLI rejects a
+		// format it does not support.
+		{"fetch", `{"url":"http://x","format":"markdown"}`,
+			[]string{"fetch", "--format", "markdown", "--", "http://x"}},
+		{"fetch", `{"url":"http://x","format":"markdown","head":100,"fields":"title,byline"}`,
+			[]string{"fetch", "--format", "markdown", "--head", "100", "--fields", "title,byline", "--", "http://x"}},
+		{"fetch", `{"url":"http://x","format":"text"}`,
+			[]string{"fetch", "--format", "text", "--", "http://x"}},
 		{"fetch", `{"url":"http://x","output":"/tmp/page.html","fields":"bytes,output"}`,
 			[]string{"fetch", "--output", "/tmp/page.html", "--fields", "bytes,output", "--", "http://x"}},
 		// EST-8337 item 1: the url is a positional, so one that looks like a
@@ -85,14 +93,15 @@ func TestBuildMapsArguments(t *testing.T) {
 
 // Defends EST-8204 item 1: the fetch help[] lines and the CLI's binary-body
 // hint name --output and --fields, so the tool must offer both, or an MCP
-// caller is told to do something it has no way to do.
+// caller is told to do something it has no way to do. Epic 11 T3 adds format:
+// the markdown errors' help[] says to run without --format markdown.
 func TestFetchToolOffersOutputAndFields(t *testing.T) {
 	for _, tl := range tools {
 		if tl.name != "fetch" {
 			continue
 		}
 		props, _ := tl.schema["properties"].(map[string]any)
-		for _, k := range []string{"output", "fields"} {
+		for _, k := range []string{"output", "fields", "format"} {
 			if _, ok := props[k]; !ok {
 				t.Errorf("fetch tool has no %q argument", k)
 			}
