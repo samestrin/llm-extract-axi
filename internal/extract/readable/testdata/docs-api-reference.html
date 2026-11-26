@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<!-- Written for llm-extract's tests. Not copied from any live site. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rate limits - Parcelpost API Reference</title>
+  <link rel="stylesheet" href="/css/docs.css">
+</head>
+<body>
+  <nav class="topnav">
+    <a href="/" class="logo">Parcelpost</a>
+    <a href="/docs/">Guides</a>
+    <a href="/api/">API reference</a>
+    <a href="/sdks/">Client libraries</a>
+    <a href="/status/">System status</a>
+    <a href="/login/">Sign in to the dashboard</a>
+  </nav>
+
+  <div class="docs-layout">
+    <nav class="docs-sidebar" aria-label="API reference">
+      <ul>
+        <li><a href="/api/authentication">Authentication</a></li>
+        <li><a href="/api/errors">Errors</a></li>
+        <li><a href="/api/pagination">Pagination</a></li>
+        <li><a href="/api/rate-limits" class="active">Rate limits</a></li>
+        <li><a href="/api/webhooks">Webhook signatures</a></li>
+        <li><a href="/api/shipments">Shipments</a></li>
+        <li><a href="/api/labels">Labels</a></li>
+      </ul>
+    </nav>
+
+    <main class="docs-content">
+      <h1>Rate limits</h1>
+      <p>Every API key may make up to 600 requests per minute, counted in a rolling window, and requests above that limit are refused with status 429 until the window has room again.</p>
+
+      <p>Each response carries three headers that tell you where you stand, so a well-behaved client never needs to guess. Read them on every response rather than keeping your own count, because requests from other processes sharing the key count against the same window.</p>
+
+      <table>
+        <thead><tr><th>Header</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>X-RateLimit-Limit</code></td><td>Requests allowed in the current window.</td></tr>
+          <tr><td><code>X-RateLimit-Remaining</code></td><td>Requests left before the limit is reached.</td></tr>
+          <tr><td><code>Retry-After</code></td><td>Seconds to wait before retrying, sent only with a 429.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Handling a 429</h2>
+      <p>When you receive a 429, wait for the number of seconds in <code>Retry-After</code> before sending the request again. Retrying sooner does not help: the request is refused and still counts towards the next window, which only prolongs the wait for every process using the key.</p>
+
+      <pre><code>if resp.StatusCode == 429 {
+    wait, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
+    time.Sleep(time.Duration(wait) * time.Second)
+}</code></pre>
+
+      <h2>Higher limits</h2>
+      <p>Accounts on the Business plan can ask for a higher limit for a single key. Write to support with the key's identifier and the traffic you expect at peak, and we will usually reply within one working day.</p>
+    </main>
+  </div>
+
+  <footer class="docs-footer">
+    <p>Parcelpost API v3 &middot; Built with care in Rotterdam</p>
+    <p><a href="/legal">Legal</a> <a href="/security">Report a security issue</a></p>
+  </footer>
+
+  <div class="cookie-bar">
+    <p>Parcelpost uses essential cookies to keep you signed in.</p>
+    <button>Got it</button>
+  </div>
+</body>
+</html>

@@ -1,0 +1,153 @@
+[
+  {
+    "name": "article-news",
+    "kind": "article",
+    "path": "article-news.html",
+    "title": "Harbour survey finds seagrass recovering faster than expected",
+    "byline": "Mara Okonkwo",
+    "expect": [
+      "Seagrass meadows in the inner harbour have spread across almost twice the area recorded five years ago",
+      "Some boat owners, however, say the buoy fees are too high"
+    ],
+    "boilerplate": [
+      "Subscribe for $1 a week",
+      "Breaking: Ferry timetable changes from Monday",
+      "Volunteers pull two tonnes of plastic from the river",
+      "© 2026 Tidewater Media Group. All rights reserved.",
+      "We use cookies to personalise content and measure our audience."
+    ]
+  },
+  {
+    "name": "article-feature",
+    "kind": "article",
+    "path": "article-feature.html",
+    "title": "The last lighthouse keepers of the northern coast",
+    "byline": "Words by Tomasz Lindqvist",
+    "expect": [
+      "For eleven years Agnes Fairweather climbed one hundred and twelve steps every evening",
+      "she still checks that the brass on the front door has been polished"
+    ],
+    "boilerplate": [
+      "Listen to the Longshore podcast",
+      "Get the winter print issue delivered free",
+      "Sign up for the Longshore weekly letter",
+      "Longshore Magazine is published by Saltwater Press Ltd, registered in Scotland.",
+      "This site stores cookies on your device to remember your preferences."
+    ]
+  },
+  {
+    "name": "docs-page",
+    "kind": "docs",
+    "path": "../../../../benchmarks/fixtures/docs-page.html",
+    "title": "Getting Started - Quarry Docs",
+    "byline": "",
+    "expect": [
+      "Quarry turns the data you already have into a queryable project.",
+      "Results are cached per source version, so a repeated query over unchanged data returns instantly."
+    ],
+    "boilerplate": [
+      "Skip to content",
+      "Get started free",
+      "Troubleshooting",
+      "On this page",
+      "© 2026 Quarry Labs. Example content for the llm-extract benchmark."
+    ]
+  },
+  {
+    "name": "docs-api-reference",
+    "kind": "docs",
+    "path": "docs-api-reference.html",
+    "title": "Rate limits - Parcelpost API Reference",
+    "byline": "",
+    "expect": [
+      "Every API key may make up to 600 requests per minute, counted in a rolling window",
+      "Write to support with the key's identifier and the traffic you expect at peak"
+    ],
+    "boilerplate": [
+      "Sign in to the dashboard",
+      "Webhook signatures",
+      "Parcelpost API v3 · Built with care in Rotterdam",
+      "Parcelpost uses essential cookies to keep you signed in."
+    ]
+  },
+  {
+    "name": "blog-post",
+    "kind": "blog",
+    "path": "blog-post.html",
+    "title": "Why I stopped using a standing desk — notes from the shed",
+    "byline": "Priya Raman",
+    "expect": [
+      "Three years ago I bought a standing desk because every article I read said sitting was killing me.",
+      "moving often matters more than which way up you are while you are still."
+    ],
+    "boilerplate": [
+      "What I am doing now",
+      "Same experience here, the stool was the giveaway.",
+      "Built with a static site generator and too much tea.",
+      "This blog uses one cookie to remember your theme choice."
+    ]
+  },
+  {
+    "name": "blog-tutorial",
+    "kind": "blog",
+    "path": "blog-tutorial.html",
+    "title": "Retrying HTTP requests without making things worse",
+    "byline": "Kenji Abe",
+    "expect": [
+      "Retries look like a free reliability win",
+      "Give the whole operation a deadline with a context"
+    ],
+    "boilerplate": [
+      "Conference talks",
+      "Share on Mastodon",
+      "Kenji Abe writes about backend systems.",
+      "Analytics cookies help me see which posts are useful."
+    ]
+  },
+  {
+    "name": "forum-thread",
+    "kind": "forum",
+    "path": "forum-thread.html",
+    "title": "Sourdough starter smells like nail polish remover — what am I doing wrong? - Crumb & Crust Forums",
+    "byline": "",
+    "expect": [
+      "That smell is acetone-like esters, and it almost always means the starter is hungry.",
+      "I was about to throw it away and start again from scratch."
+    ],
+    "boilerplate": [
+      "Register a new account",
+      "Forum software powered by an open-source bulletin board.",
+      "By continuing to browse the forum you agree to our use of cookies."
+    ]
+  },
+  {
+    "name": "product-page",
+    "kind": "product",
+    "path": "product-page.html",
+    "title": "Fellside 2-person tent",
+    "byline": "",
+    "expect": [
+      "The Fellside is a freestanding two-person tent that pitches inner and flysheet together in under four minutes",
+      "At 1.9 kilograms packed, it is light enough for a long weekend on foot"
+    ],
+    "boilerplate": [
+      "Free delivery on orders over $75",
+      "Clearance deals",
+      "Customers also bought",
+      "Ridgeline Outdoor Ltd. Company number 0000000. Prices include VAT.",
+      "We and our partners use cookies to show you relevant offers."
+    ]
+  },
+  {
+    "name": "no-article-landing",
+    "kind": "no-article",
+    "path": "no-article-landing.html",
+    "no_main_content": true
+  },
+  {
+    "name": "no-article-login",
+    "kind": "no-article",
+    "path": "no-article-login.html",
+    "no_main_content": true
+  }
+]
