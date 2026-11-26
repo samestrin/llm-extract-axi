@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `make bench-tokens` runs the token benchmark offline and writes its results: the table `benchmarks/results-tokens.md` and the counts in `benchmarks/results-tokens.json`. Besides `extract-links --axi`, it now measures `fetch --format markdown` against the raw HTML on the readable package's 10 committed fixtures (3.8x fewer tokens across the 8 with main content). A page with no main content records the named error, never a zero-count success, and a failed run writes nothing. `TestQuotedTokenCountsMatchARun` checks the committed counts and table against a fresh run.
+
 ### Security
 
 - The MCP `fetch` tool passes the url after `--`, so a url that looks like a flag (`--output=...`) is taken as the url and fails, instead of being parsed as a flag.
