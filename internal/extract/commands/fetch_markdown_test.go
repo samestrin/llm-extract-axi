@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/samestrin/llm-extract-axi/v2/internal/extract/readable"
 )
@@ -219,7 +220,7 @@ func TestFetchMarkdownNonHTMLIsError(t *testing.T) {
 			if !strings.Contains(help, "without --format markdown") {
 				t.Errorf("help[] does not point at plain fetch: %s", help)
 			}
-			if strings.Contains(out, `"a":1`) || strings.Contains(out, "body") {
+			if _, ok := doc["body"]; ok || strings.Contains(out, `"a":1`) {
 				t.Errorf("the page reached stdout:\n%s", out)
 			}
 			if n := p.hits.Load(); n != 1 {
@@ -368,5 +369,22 @@ func TestFetchMarkdownBadFlagsSendNoRequest(t *testing.T) {
 	}
 	if n := p.hits.Load(); n != 0 {
 		t.Errorf("%d request(s) sent for invocations that were refused", n)
+	}
+}
+
+// Defends text fields against a page that is not UTF-8: a Latin-1 page is
+// decoded by its declared charset, so the Markdown says café, not an invalid
+// byte that a JSON encoder would turn into U+FFFD and a TOON one would emit
+// raw.
+func TestFetchMarkdownDecodesDeclaredCharset(t *testing.T) {
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	latin1 := bytes.ReplaceAll(bigArticle(), []byte("café"), []byte("caf\xe9"))
+	p := serveMarkdownPage(t, "text/html; charset=iso-8859-1", latin1)
+	code, stdout, stderr := runCLI(t, "fetch", p.url, "--format", "markdown", "--plain", "--full")
+	if code != 0 {
+		t.Fatalf("exit %d; stderr=%q", code, stderr)
+	}
+	if !utf8.ValidString(stdout) || !strings.Contains(stdout, "café prose") {
+		t.Errorf("Markdown of a Latin-1 page is not decoded UTF-8:\n%.300q", stdout)
 	}
 }

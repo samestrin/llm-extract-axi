@@ -7,20 +7,32 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
+	"github.com/samestrin/llm-extract-axi/v2/internal/extract/readable"
 	"github.com/samestrin/llm-extract-axi/v2/internal/support/fetch"
 	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
-// formatRaw is the only output format ported so far: the body as received.
-// llm-tools also offers text and markdown for HTML; those are rejected
-// rather than ignored, so a caller never gets raw HTML when it asked for text.
-const formatRaw = "raw"
+// formatRaw is the body as received; formatMarkdown is the main content of
+// an HTML page as Markdown. llm-tools also offers text for HTML; that is
+// rejected rather than ignored, so a caller never gets raw HTML when it asked
+// for text.
+const (
+	formatRaw      = "raw"
+	formatMarkdown = "markdown"
+)
+
+// errNotHTML is a --format markdown fetch whose page is not HTML. The page
+// was fetched, so it is a run error (exit 1), not a usage error.
+var errNotHTML = errors.New("not an HTML page")
 
 // defaultHead is how many body bytes fetch prints unless --head or --full
 // says otherwise: enough to see what a page is without filling a context.
@@ -42,7 +54,7 @@ var (
 // fetchFieldNames are the envelope fields --fields selects from, in envelope
 // order. Every field FetchResult can carry is selectable, including the
 // conditional output and the TOON-only help.
-var fetchFieldNames = []string{"url", "final_url", "status", "tier", "format", "content_type", "bytes", "truncated", "output", "body", "help"}
+var fetchFieldNames = []string{"url", "final_url", "status", "tier", "format", "content_type", "bytes", "source_bytes", "truncated", "title", "byline", "output", "body", "help"}
 
 // parseFetchFields turns the --fields value into a set, or nil for an empty
 // spec (the whole envelope). An unknown name is a usage error that lists the
@@ -100,6 +112,11 @@ func selectFetchFields(out FetchResult, set map[string]bool) (map[string]any, er
 // than that: a cut at --head, or no text at all for a body that is not text.
 // Body is a pointer so --output can leave it out while an empty body is still
 // printed as empty. Help is set under TOON only, as on every other command.
+//
+// Under --format markdown the body is the Markdown, so Bytes and Truncated
+// are relative to the Markdown; SourceBytes is the size of the fetched HTML,
+// and Title and Byline come from the page. The three are pointers so a raw
+// result leaves them out while a markdown result prints an empty title.
 type FetchResult struct {
 	URL         string   `json:"url"`
 	FinalURL    string   `json:"final_url,omitempty"`
@@ -108,7 +125,10 @@ type FetchResult struct {
 	Format      string   `json:"format"`
 	ContentType string   `json:"content_type"`
 	Bytes       int      `json:"bytes"`
+	SourceBytes *int     `json:"source_bytes,omitempty"`
 	Truncated   bool     `json:"truncated"`
+	Title       *string  `json:"title,omitempty"`
+	Byline      *string  `json:"byline,omitempty"`
 	Output      string   `json:"output,omitempty"`
 	Body        *string  `json:"body,omitempty"`
 	Help        []string `json:"help,omitempty"`
@@ -183,7 +203,7 @@ Examples:
 		RunE: runFetch,
 	}
 	cmd.Flags().StringVar(&fetchOutput, "output", "", "Write the whole body to this file; stdout gets the document without body")
-	cmd.Flags().StringVar(&fetchFormat, "format", formatRaw, "Output format: raw (the only one supported)")
+	cmd.Flags().StringVar(&fetchFormat, "format", formatRaw, "Output format: raw (the body as received) or markdown (the main content of an HTML page)")
 	cmd.Flags().IntVar(&fetchTimeout, "timeout", fetch.DefaultTimeout, "Per-attempt timeout in seconds")
 	cmd.Flags().IntVar(&fetchRetries, "retries", fetch.DefaultMaxRetries, "Retries on connection errors and 5xx")
 	cmd.Flags().StringVar(&fetchUserAgent, "user-agent", "", "Override the request User-Agent")
@@ -191,7 +211,7 @@ Examples:
 	cmd.Flags().BoolVar(&fetchJSON, "json", false, "Output as JSON")
 	cmd.Flags().IntVar(&fetchHead, "head", defaultHead, "Print the first N bytes of the body, cut on a character boundary")
 	cmd.Flags().BoolVar(&fetchFull, "full", false, "Print the whole body; cannot be used with --head")
-	cmd.Flags().StringVar(&fetchFields, "fields", "", "Comma-separated envelope fields to print: url,final_url,status,tier,format,content_type,bytes,truncated,output,body,help (default all)")
+	cmd.Flags().StringVar(&fetchFields, "fields", "", "Comma-separated envelope fields to print: url,final_url,status,tier,format,content_type,bytes,source_bytes,truncated,title,byline,output,body,help (default all)")
 	return cmd
 }
 
@@ -233,8 +253,8 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return errInvalidURL
 	}
-	if fetchFormat != formatRaw {
-		return output.UsageError(fmt.Errorf("unsupported --format %q: only %q is available", fetchFormat, formatRaw))
+	if fetchFormat != formatRaw && fetchFormat != formatMarkdown {
+		return output.UsageError(fmt.Errorf("unsupported --format %q: use %q or %q", fetchFormat, formatRaw, formatMarkdown))
 	}
 	// A directory or a path with no parent is refused before the request,
 	// not after it with exit 1.
@@ -272,9 +292,22 @@ func runFetch(cmd *cobra.Command, args []string) error {
 		ContentType: res.ContentType,
 		Bytes:       res.Bytes,
 	}
+	// From here on body is what the caller asked for: the page as received,
+	// or its Markdown, which every cut, size and --output below is about.
+	body := res.Body
+	if fetchFormat == formatMarkdown {
+		art, md, err := pageMarkdown(res)
+		if err != nil {
+			return err
+		}
+		body = []byte(md)
+		out.Bytes = len(body)
+		out.SourceBytes = &res.Bytes
+		out.Title, out.Byline = &art.Title, &art.Byline
+	}
 	w := cmd.OutOrStdout()
 	if fetchOutput != "" {
-		if err := os.WriteFile(fetchOutput, res.Body, 0o644); err != nil {
+		if err := os.WriteFile(fetchOutput, body, 0o644); err != nil {
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
 		out.Output = fetchOutput
@@ -287,24 +320,24 @@ func runFetch(cmd *cobra.Command, args []string) error {
 
 	limit := fetchHead
 	if fetchFull {
-		limit = len(res.Body)
+		limit = len(body)
 	}
-	shown := headCut(res.Body, limit)
+	shown := headCut(body, limit)
 
 	if !fetchJSON && !GlobalAXIOutput {
 		// --plain is a byte pipe: stdout holds body bytes only, and the size
 		// hint goes to stderr so a redirect never saves it into the page.
-		if len(shown) < len(res.Body) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "llm-extract: printed %d of %d bytes; run again with --full for the whole body or --output <file> to save it\n", len(shown), len(res.Body))
+		if len(shown) < len(body) {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "llm-extract: printed %d of %d bytes; run again with --full for the whole body or --output <file> to save it\n", len(shown), len(body))
 		}
 		_, err := w.Write(shown)
 		return err
 	}
 
-	body := ""
-	if isTextBody(res.ContentType, res.Body) {
-		body = string(shown)
-		out.Truncated = len(shown) < len(res.Body)
+	text := ""
+	if fetchFormat == formatMarkdown || isTextBody(res.ContentType, body) {
+		text = string(shown)
+		out.Truncated = len(shown) < len(body)
 		if out.Truncated {
 			out.Help = []string{fetchHelpFull, fetchHelpOutput}
 		}
@@ -312,8 +345,50 @@ func runFetch(cmd *cobra.Command, args []string) error {
 		out.Truncated = true
 		out.Help = []string{fetchHelpBinary}
 	}
-	out.Body = &body
+	out.Body = &text
 	return printFetchResult(w, out, fields)
+}
+
+// pageMarkdown turns a fetched HTML page into the Markdown of its main
+// content. A page that is not HTML, or has no main content, is a
+// fetchFailure, so its error names the next step; neither is ever an empty
+// body.
+func pageMarkdown(res *fetch.Result) (readable.Article, string, error) {
+	ct := res.ContentType
+	if strings.TrimSpace(ct) == "" {
+		// No type sent: the bytes decide, as a browser would.
+		ct = http.DetectContentType(res.Body)
+	}
+	if !isHTMLType(ct) {
+		named := res.ContentType
+		if strings.TrimSpace(named) == "" {
+			named = "none sent; the body reads as " + ct
+		}
+		return readable.Article{}, "", &fetchFailure{err: fmt.Errorf("fetch %s: --format markdown needs an HTML page, but the content type is %q: %w", res.URL, named, errNotHTML), status: res.Status}
+	}
+	pageURL := res.FinalURL
+	if pageURL == "" {
+		pageURL = res.URL
+	}
+	base, _ := url.Parse(pageURL)
+	art, err := readable.Extract(bytes.NewReader(res.Body), base)
+	if errors.Is(err, readable.ErrNoMainContent) {
+		return readable.Article{}, "", &fetchFailure{err: fmt.Errorf("fetch %s: %w", res.URL, err), status: res.Status}
+	}
+	if err != nil {
+		return readable.Article{}, "", fmt.Errorf("fetch %s: %w", res.URL, err)
+	}
+	md, err := art.Markdown()
+	if err != nil {
+		return readable.Article{}, "", fmt.Errorf("fetch %s: %w", res.URL, err)
+	}
+	return art, md, nil
+}
+
+// isHTMLType reports whether contentType names an HTML page.
+func isHTMLType(contentType string) bool {
+	mt, _, err := mime.ParseMediaType(contentType)
+	return err == nil && (mt == "text/html" || mt == "application/xhtml+xml")
 }
 
 // atLeast refuses a numeric flag below min, in cobra's wording for a bad flag
@@ -366,7 +441,13 @@ var fetchAbsentWhy = map[string]string{
 	"output": "output is set only with --output <file>",
 	"body":   "body is left out when --output <file> saves it",
 	"help":   "help appears only when the body is cut or not text, and never under --json",
+	// One line for the three; errEmptyFetchSelection says it once.
+	"source_bytes": fetchMarkdownOnly,
+	"title":        fetchMarkdownOnly,
+	"byline":       fetchMarkdownOnly,
 }
+
+const fetchMarkdownOnly = "source_bytes, title and byline appear only with --format markdown"
 
 // errEmptyFetchSelection reports a --fields selection where every named
 // field is absent from this run. An empty document would exit 0 with zero
@@ -381,7 +462,7 @@ func errEmptyFetchSelection(set map[string]bool) error {
 			continue
 		}
 		names = append(names, n)
-		if why := fetchAbsentWhy[n]; why != "" {
+		if why := fetchAbsentWhy[n]; why != "" && !slices.Contains(whys, why) {
 			whys = append(whys, why)
 		}
 	}
@@ -450,6 +531,10 @@ func (f *fetchFailure) Unwrap() error { return f.err }
 // Like every help[] line it names flags only, never the URL (#55).
 func (f *fetchFailure) nextStep() string {
 	switch {
+	case errors.Is(f.err, errNotHTML):
+		return "Run again without --format markdown to get the body as received"
+	case errors.Is(f.err, readable.ErrNoMainContent):
+		return "Run again without --format markdown for the whole page; a page that builds its content with JavaScript needs a browser tool"
 	case errors.Is(f.err, fetch.ErrChallenge):
 		return "This page needs a real browser; llm-extract cannot pass a challenge page, so open it with a browser tool"
 	case errors.Is(f.err, fetch.ErrTooLarge):
