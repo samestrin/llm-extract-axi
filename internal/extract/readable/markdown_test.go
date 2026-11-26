@@ -93,6 +93,7 @@ func TestArticleMarkdownLinkForms(t *testing.T) {
 		name       string
 		head       string
 		href       string
+		noHref     bool
 		wantTarget string
 	}{
 		{name: "parent relative", href: "../x", wantTarget: "https://example.test/docs/x"},
@@ -103,14 +104,20 @@ func TestArticleMarkdownLinkForms(t *testing.T) {
 		{name: "mailto", href: "mailto:author@example.test", wantTarget: "mailto:author@example.test"},
 		{name: "javascript", href: " JavaScript:alert(1)"},
 		{name: "data", href: "data:text/plain,hello"},
+		{name: "absent href", noHref: true},
+		{name: "empty href", href: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			anchor := `<a href="` + tt.href + `">link text</a>`
+			if tt.noHref {
+				anchor = `<a>link text</a>`
+			}
 			page := fmt.Sprintf(`<!doctype html><html><head><title>Links</title>%s</head><body><main><article>
-<h1>Link example</h1><p>%s</p><p>%s</p><p><a href="%s">link text</a></p>
+<h1>Link example</h1><p>%s</p><p>%s</p><p>%s</p>
 </article></main></body></html>`, tt.head,
 				strings.Repeat("This article has enough substantive prose for main-content extraction. ", 8),
-				strings.Repeat("A second paragraph keeps the link inside the selected article. ", 8), tt.href)
+				strings.Repeat("A second paragraph keeps the link inside the selected article. ", 8), anchor)
 			base, _ := url.Parse("https://example.test/docs/guides/page.html")
 			article, err := Extract(strings.NewReader(page), base)
 			if err != nil {

@@ -19,6 +19,7 @@ func TestEffectiveBaseURLEdgeCases(t *testing.T) {
 	}{
 		{name: "absolute base without final URL", baseRef: "https://static.example.test/manual/", want: "https://static.example.test/manual/"},
 		{name: "malformed base ignored", baseRef: "%", final: "https://example.test/final/page", want: "https://example.test/final/page"},
+		{name: "empty base ignored", baseRef: "", final: "https://example.test/final/page", want: "https://example.test/final/page"},
 		{name: "relative base without final URL", baseRef: "manual/", want: ""},
 	}
 	for _, tt := range tests {
