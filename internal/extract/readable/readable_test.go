@@ -1,6 +1,7 @@
 package readable
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -108,13 +109,12 @@ func TestExtractFixtures(t *testing.T) {
 	base, _ := url.Parse("https://example.test/section/page.html")
 	for _, f := range loadFixtures(t) {
 		t.Run(f.Name, func(t *testing.T) {
-			file, err := os.Open(filepath.Join("testdata", f.Path))
+			raw, err := os.ReadFile(filepath.Join("testdata", f.Path))
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer file.Close()
 
-			a, err := Extract(file, base)
+			a, err := Extract(bytes.NewReader(raw), base)
 			if f.NoMainContent {
 				if !errors.Is(err, ErrNoMainContent) {
 					t.Fatalf("want ErrNoMainContent, got err=%v article=%+v", err, a)
@@ -187,13 +187,12 @@ func TestExtractReadErrorIsReturned(t *testing.T) {
 // Defends link resolution against the final URL, which T2's Markdown relies on:
 // a relative href in the main content comes back absolute.
 func TestExtractResolvesRelativeLinks(t *testing.T) {
-	f, err := os.Open(filepath.Join("testdata", "article-news.html"))
+	raw, err := os.ReadFile(filepath.Join("testdata", "article-news.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	base, _ := url.Parse("https://news.example.test/2026/11/harbour/")
-	a, err := Extract(f, base)
+	a, err := Extract(bytes.NewReader(raw), base)
 	if err != nil {
 		t.Fatal(err)
 	}

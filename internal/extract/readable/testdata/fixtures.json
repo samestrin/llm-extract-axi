@@ -39,8 +39,8 @@
     "name": "docs-page",
     "kind": "docs",
     "path": "../../../../benchmarks/fixtures/docs-page.html",
-    "title": "Getting Started - Quarry Docs",
-    "byline": "",
+    "title": "Getting Started",
+    "byline": "Quarry",
     "expect": [
       "Quarry turns the data you already have into a queryable project.",
       "Results are cached per source version, so a repeated query over unchanged data returns instantly."
@@ -74,7 +74,7 @@
     "name": "blog-post",
     "kind": "blog",
     "path": "blog-post.html",
-    "title": "Why I stopped using a standing desk — notes from the shed",
+    "title": "Why I stopped using a standing desk",
     "byline": "Priya Raman",
     "expect": [
       "Three years ago I bought a standing desk because every article I read said sitting was killing me.",
@@ -108,8 +108,8 @@
     "name": "forum-thread",
     "kind": "forum",
     "path": "forum-thread.html",
-    "title": "Sourdough starter smells like nail polish remover — what am I doing wrong? - Crumb & Crust Forums",
-    "byline": "",
+    "title": "Sourdough starter smells like nail polish remover — what am I doing wrong?",
+    "byline": "loafdreamer 14 posts",
     "expect": [
       "That smell is acetone-like esters, and it almost always means the starter is hungry.",
       "I was about to throw it away and start again from scratch."
