@@ -163,12 +163,22 @@ never printed: body is empty and truncated is true; save it with --output.
              and --plain prints one line instead of the body:
              Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>
              --head cannot be used with --output
+  --format   raw (the default, the body as received) or markdown (the main
+             content of an HTML page as Markdown, made without a model)
   --fields   print only these envelope fields, comma-separated: url,
-             final_url, status, tier, format, content_type, bytes, truncated,
-             output, body, help. Composes with --json and --output; --plain
-             prints no envelope, so --fields with --plain is a usage error.
-             A selection where no named field is present in this run is an
-             error naming the fields, never an empty document
+             final_url, status, tier, format, content_type, bytes,
+             source_bytes, truncated, title, byline, output, body, help.
+             Composes with --json and --output; --plain prints no envelope,
+             so --fields with --plain is a usage error. A selection where no
+             named field is present in this run is an error naming the
+             fields, never an empty document
+
+--format markdown makes the body the page's main content as Markdown. The
+cut, bytes, truncated, --output and --plain then all describe the Markdown;
+source_bytes is the fetched HTML's size, and title and byline come from the
+page. A page that is not HTML, or has no main content, exits non-zero with
+the reason and a help[] line naming --format markdown; it is never an empty
+body.
 
 A failed fetch exits non-zero and says why. So does a page that needs a
 browser (a Cloudflare or JavaScript challenge page): this command cannot pass

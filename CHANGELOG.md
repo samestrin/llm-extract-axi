@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `make bench-tokens` runs the token benchmark offline and writes its results: the table `benchmarks/results-tokens.md` and the counts in `benchmarks/results-tokens.json`. Besides `extract-links --axi`, it now measures `fetch --format markdown` against the raw HTML on the readable package's 10 committed fixtures (3.8x fewer tokens across the 8 with main content). A page with no main content records the named error, never a zero-count success, and a failed run writes nothing. `TestQuotedTokenCountsMatchARun` checks the committed counts and table against a fresh run.
+- `llm-extract fetch --format markdown` returns the main content of an HTML page as Markdown, with no model call. The envelope gains `source_bytes` (the fetched HTML's size), `title` and `byline`; `bytes`, `truncated`, `--head`, `--output` and `--plain` describe the Markdown. A page that is not HTML, or has no main content, exits 1 with the reason and a `help[]` line naming running again without `--format markdown`, never an empty body; `--format text` is still rejected (exit 2). The MCP `fetch` tool passes `format` through.
 
 ### Security
 
@@ -191,7 +192,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - README section "AXI conformance": all ten AXI principles listed as met or with a stated exception and its reason — `fetch` ignoring `--axi` (1), the five-field `extract-links` schema (2), no truncation or `--full` on `fetch` (3), early failures reporting on stderr only (6), and no `help[]` next-step lines (9).
 
 - `llm-extract-mcp`: a thin MCP server (stdio) with `fetch`, `extract_links` and `extract_relevant` tools. Each call runs the `llm-extract` CLI (found via `LLM_EXTRACT_BIN`, next to the server, or on `PATH`) and returns its stdout; a non-zero exit is an error result carrying stderr, never an empty success.
-- `llm-extract fetch <url>`: ported from `llm-tools`, direct tier only (no proxy or FlareSolverr). A failed fetch, a non-2xx status, or a challenge page that needs a browser exits non-zero with the reason on stderr, never an empty result. `--format` accepts `raw` only; `text` and `markdown` are rejected until ported.
+- `llm-extract fetch <url>`: ported from `llm-tools`, direct tier only (no proxy or FlareSolverr). A failed fetch, a non-2xx status, or a challenge page that needs a browser exits non-zero with the reason on stderr, never an empty result. At this release `--format` accepts only `raw`; `text` is rejected. (`markdown` arrived later; see Unreleased.)
 - Project skeleton on the `llm-data-axi` pattern: Go module `github.com/samestrin/llm-extract-axi` and an `llm-extract` root command whose version is stamped at build time. An unknown command exits non-zero.
 - `Makefile` with `build`, `build-all`, `test`, `test-race`, `test-cover`, `cover-gate`, `lint`, `vet`, `fmt`, `golangci`, `install`, `clean` and `hooks` targets. `build` covers every binary under `cmd/`, and the test targets build first.
 - CI: `lint` (`go vet`, `gofmt -s`, `golangci-lint` v2.12.2) → `make build` → `go test -race` with coverage → an 80% coverage gate that fails the build, plus a five-platform cross-compile matrix with a 20MB binary size gate.

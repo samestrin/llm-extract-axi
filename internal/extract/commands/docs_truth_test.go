@@ -194,3 +194,39 @@ func TestReadmeNamesEverySetupTarget(t *testing.T) {
 		}
 	}
 }
+
+// TestDocsDescribeFetchMarkdown defends epic 11's fetch --format markdown:
+// the probe first proves the live behaviour (the body is Markdown, and the
+// envelope carries source_bytes, title and byline), then fails on a doc that
+// does not name the format or still says raw is the only one. A page that is
+// not HTML is probed too, so the docs' exit-1 claim is checked against the
+// code rather than restated.
+func TestDocsDescribeFetchMarkdown(t *testing.T) {
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	p := serveMarkdownPage(t, "text/html", readFixture(t, mdFixture))
+	code, doc, out := runDoc(t, "fetch", p.url, "--format", "markdown")
+	if code != 0 || doc["format"] != "markdown" {
+		t.Fatalf("--format markdown is not the live format; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+	for _, field := range []string{"source_bytes", "title", "byline"} {
+		if _, ok := doc[field]; !ok {
+			t.Fatalf("markdown envelope has no %q; the probe, not the docs, is wrong:\n%s", field, out)
+		}
+	}
+	plain := serveMarkdownPage(t, "text/plain", []byte("not html"))
+	if code, out, _ := runCLI(t, "fetch", plain.url, "--format", "markdown"); code != 1 || !strings.Contains(out, "--format markdown") {
+		t.Fatalf("a non-HTML page is not an exit-1 error naming --format markdown; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+
+	for _, path := range []string{"README.md", "docs/output.md", "integrations/claude-code/skill/SKILL.md"} {
+		s := readRepoFile(t, path)
+		if !strings.Contains(s, "--format markdown") {
+			t.Errorf("%s does not name --format markdown, so a reader cannot learn the format from it", path)
+		}
+		for _, stale := range []string{"`raw` only", "accepts only `raw`", "rejected until ported"} {
+			if strings.Contains(s, stale) {
+				t.Errorf("%s claims %q, but --format takes raw or markdown", path, stale)
+			}
+		}
+	}
+}

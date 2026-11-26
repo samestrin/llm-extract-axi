@@ -123,7 +123,7 @@ func need(a args, keys ...string) error {
 var tools = []tool{
 	{
 		name:        "fetch",
-		description: "Fetch a URL and return a TOON envelope: url, status, content_type, bytes (the whole body size), truncated, and body (the first 4096 bytes, cut on a character boundary). Use head to set the cut or full for the whole body; output saves the whole body (including a non-text body, which the envelope leaves empty) to a file path and leaves body out; fields selects envelope fields. A challenge page or failed fetch is an error, not an empty result.",
+		description: "Fetch a URL and return a TOON envelope: url, status, content_type, bytes (the whole body size), truncated, and body (the first 4096 bytes, cut on a character boundary). Use head to set the cut or full for the whole body; output saves the whole body (including a non-text body, which the envelope leaves empty) to a file path and leaves body out; fields selects envelope fields. With format=markdown the body is the main content of an HTML page as Markdown, made without a model: bytes and truncated then describe the Markdown, source_bytes the fetched HTML, and title and byline come from the page; a page that is not HTML or has no main content is an error, never an empty body. A challenge page or failed fetch is an error, not an empty result.",
 		schema: schema([]string{"url"}, map[string]any{
 			"url":        prop("string", "URL to fetch"),
 			"timeout":    prop("integer", "Per-attempt timeout in seconds"),
