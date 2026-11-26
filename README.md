@@ -113,6 +113,14 @@ url: "https://example.com"
 
 `body` holds the first 4096 bytes of the page, cut on a character boundary; `bytes` is the whole page's size and `truncated` says whether `body` holds less. On a large page, `help[]` names `--full` (the whole body) and `--output <file>` (save the raw bytes to a file).
 
+To read a page's main content rather than its markup, ask for Markdown:
+
+```bash
+llm-extract fetch https://go.dev/doc/ --format markdown --plain
+```
+
+That is still one direct HTTP GET with no model call: the body is the page's main content as Markdown, `bytes` and the cut describe the Markdown, `source_bytes` is the size of the fetched HTML, and `title`/`byline` come from the page. A page that is not HTML, or has no main content (for example one that builds it with JavaScript), exits 1 with that reason; it is never an empty body.
+
 Then ask for only what you need instead of the whole page:
 
 ```bash
@@ -124,7 +132,7 @@ llm-extract extract-relevant --path https://go.dev/doc/install --context "instal
 
 | Command | What it does |
 | --- | --- |
-| `llm-extract fetch <url>` | Download a URL with a direct HTTP GET; print a TOON envelope with the first 4096 bytes of the body |
+| `llm-extract fetch <url>` | Download a URL with a direct HTTP GET; print a TOON envelope with the first 4096 bytes of the body, or with `--format markdown` the main content of an HTML page as Markdown |
 | `llm-extract extract-links --url <url>` | Extract a page's links, ranked, each with text, score and section |
 | `llm-extract extract-relevant --path <path> --context <text>` | Pull the parts of files, a directory or a URL relevant to the context, using a model |
 | `llm-extract setup` | Register llm-extract with Claude Code, Codex and OpenCode in a project; `--target` picks the agents |
@@ -141,7 +149,7 @@ llm-extract extract-relevant --path ./src --context "API endpoint definitions"
 llm-extract extract-relevant --path ./docs --context "configuration options" --concurrency 4 -o out.md
 ```
 
-Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `fetch`, `extract-links`, `extract-relevant` and `setup`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text, and a failed fetch carries one too). The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope around the body's first 4096 bytes (`--head N` sets the cut, `--full` the whole body, `--plain` body bytes alone, `--output <file>` saves the whole body to a file and under `--plain` prints `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>` instead of the body), and `completion` stays prose.
+Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `fetch`, `extract-links`, `extract-relevant` and `setup`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text, and a failed fetch carries one too). The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope around the body's first 4096 bytes (`--head N` sets the cut, `--full` the whole body, `--plain` body bytes alone, `--output <file>` saves the whole body to a file and under `--plain` prints `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>` instead of the body). With `--format markdown` the body is the page's main content as Markdown, so `bytes`, `truncated`, `--head`, `--output` and `--plain` all describe the Markdown, and `source_bytes`, `title` and `byline` describe the fetched page. `completion` stays prose.
 
 ## Configuration
 
@@ -168,7 +176,7 @@ Output modes: TOON by default, `--plain` for human-readable text, `--json` for s
 | Exit code | Meaning |
 | --- | --- |
 | 0 | Success |
-| 1 | The command ran and failed (a failed fetch or model call, or a partial result) |
+| 1 | The command ran and failed (a failed fetch or model call, a `--format markdown` page that is not HTML or has no main content, or a partial result) |
 | 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a missing `extract-relevant --path`, a rejected flag value such as `fetch --format text`, `fetch --head 0`, `--max-bytes 0`, `--timeout 0`, `--head` with `--full` or with `--output`, an `extract-relevant -o` path that cannot be written, a `setup --dir` that is missing or is home, `--fields` with `--plain` or an unknown `--fields` name, or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context`; [docs/output.md](docs/output.md#exit-codes) has the full list |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
@@ -188,6 +196,8 @@ Generated by [`benchmarks/perf.sh`](benchmarks/perf.sh) from [`benchmarks/result
 | Typical command | `llm-extract extract-links --url http://127.0.0.1/docs/getting-started/ --axi` | 15.4 KB | 20 | 6.1 ms | 6.7 ms | 5.4 ms | 11.5 ms |
 | Large input | `llm-extract extract-links --url http://127.0.0.1/docs/large/ --axi` | 5.0 MB | 20 | 204.1 ms | 208.3 ms | 190.3 ms | 274.9 ms |
 
+The separate token benchmark answers what an agent reads instead: across the 8 readable fixtures with main content, `fetch --format markdown` prints 9642 raw HTML tokens vs 2555 Markdown tokens (3.8x). The table is [benchmarks/results-tokens.md](benchmarks/results-tokens.md), generated by `make bench-tokens` from [benchmarks/results-tokens.json](benchmarks/results-tokens.json); [benchmarks/README.md](benchmarks/README.md) says how both benchmarks are run and how tokens are counted.
+
 ## How it works
 
 `extract-relevant` and `extract-links` are lifted from `llm-data` and behave as they did there. `fetch` is ported from `llm-tools`, direct tier only.
@@ -206,10 +216,10 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 ## Limits
 
 - `fetch` is a direct HTTP GET only: there is no proxy or browser tier, so a page behind a JavaScript or Cloudflare challenge fails with the reason instead of returning the challenge page.
-- `--format` accepts `raw` only; `text` and `markdown` are rejected.
+- `--format` takes `raw` (the default, the body as received) or `markdown` (the main content of an HTML page as Markdown, no model); `text` is rejected (exit 2). `--format markdown` needs an HTML page with main content: a page that is not HTML, or one with no main content (such as a login wall or a page built by JavaScript), exits 1 with the reason instead of printing an empty body.
 - A response body larger than the size cap (`FETCH_MAX_BYTES`, default 16 MiB) is an error, not a truncated page.
 - The model reads a bounded input: `extract-relevant` cuts each prompt at 30,000 bytes, and `extract-links --context` ranks only the first 100 links in a prompt cut at 25,000 bytes. A result built from a cut input carries a `truncated` note. These are fixed input limits on what the model reads, not output truncation; the model commands have no `--full`.
-- A successful `fetch` prints a TOON envelope: `bytes` (the whole-body size), `truncated`, and the body's first 4096 bytes, cut on a character boundary. `--head N` sets the cut, `--full` prints the whole body, `--plain` prints body bytes alone (a cut puts a one-line size hint on stderr; with `--output` it prints the `Saved <n> bytes ...` line instead), `--json` prints the same capped document as JSON, `--fields` selects envelope fields, and `--output <file>` saves the whole body to a file. A body that is not UTF-8 text (an image, a PDF) is never printed: `body` is empty, `truncated` is true, and `help[]` points to `--output`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
+- A successful `fetch` prints a TOON envelope: `bytes` (the whole-body size), `truncated`, and the body's first 4096 bytes, cut on a character boundary. Under `--format markdown`, `body` is the page's main content as Markdown; `bytes` and `truncated` describe the Markdown, `source_bytes` is the fetched HTML's size, and `title` and `byline` come from the page. `--head N` sets the cut, `--full` prints the whole body, `--plain` prints body bytes alone (a cut puts a one-line size hint on stderr; with `--output` it prints the `Saved <n> bytes ...` line instead), `--json` prints the same capped document as JSON, `--fields` selects envelope fields, and `--output <file>` saves the whole body to a file. A body that is not UTF-8 text (an image, a PDF) is never printed: `body` is empty, `truncated` is true, and `help[]` points to `--output`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
 - `help[]` next steps appear by default (TOON) on the home view, on `fetch` when the body is cut or not text and on a failed fetch, on `setup`, and on `extract-links` and `extract-relevant` results and errors; `--json` output carries no `help[]` and `--plain` is prose.
 - An `extract-relevant` directory run skips dotfiles and dot directories (`.env`, `.npmrc`, `.aws/`), `*.env` files, and files named like credentials — `credentials*`, `secret*`, `*token*`, `*.key`, `*.pem`, and service-account files (`*service-account*`, `*service_account*`, `*serviceaccount*`), case ignored — so secrets are not sent to a model; name one as `--path` to read it. `--path` has no default. It reads only regular files whose real path is inside `--path`: a symlink out of it, a FIFO or a device is skipped. A hard link inside `--path` to a file outside it is read: it is the same file under a second name, and no path check can detect it. A FIFO or device named as `--path` is an error, and so is one named by `-o`. The rules go by file name: every other file's contents are sent as they are (a token pasted into `notes.txt` is sent), and `.gitignore` is not read. The result counts every skipped file by reason in `skipped`.
 - `setup` registers Claude Code, Codex and OpenCode; there is no session-end hook, because the tool keeps no session state.

@@ -109,6 +109,9 @@ func TestFetchToolOffersOutputAndFields(t *testing.T) {
 		if !strings.Contains(tl.description, "output") {
 			t.Errorf("fetch description does not mention output: %q", tl.description)
 		}
+		if !strings.Contains(tl.description, "markdown") {
+			t.Errorf("fetch description does not mention markdown: %q", tl.description)
+		}
 		return
 	}
 	t.Fatal("no fetch tool")
