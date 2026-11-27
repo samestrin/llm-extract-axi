@@ -60,11 +60,16 @@ const schemaFeedbackCut = " [cut]"
 
 // invalidOutputError is an answer that still broke --schema after the retry.
 // output is the raw answer, for the result's invalid_output.
+// merged says it is the chunks' answers merged, each of which validated.
 type invalidOutputError struct {
 	output, problem string
+	merged          bool
 }
 
 func (e *invalidOutputError) Error() string {
+	if e.merged {
+		return "the merged answer of the chunks does not validate against --schema: " + e.problem
+	}
 	return "the answer does not validate against --schema after one retry: " + e.problem
 }
 

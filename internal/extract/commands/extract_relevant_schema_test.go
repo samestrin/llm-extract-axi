@@ -401,8 +401,8 @@ func TestSchemaWithURLSendsTheSchema(t *testing.T) {
 
 // Defends a chunked input under --schema: every chunk is sent with the
 // schema, and the text reduce call, which would merge JSON answers as prose,
-// is not made. The per-chunk answers come back in order and the message says
-// they were not merged.
+// is not made. The chunks' answers are merged in code into one (epic 13 T3;
+// before it they came back unmerged), and equal answers leave no conflict.
 func TestSchemaChunkedInputSkipsTheTextReduce(t *testing.T) {
 	m := newSchemaModel(t, `{"price":3}`)
 	file := writeTemp(t, "big.txt", paragraphDoc(700)) // ~70 KB, several chunks
@@ -422,13 +422,13 @@ func TestSchemaChunkedInputSkipsTheTextReduce(t *testing.T) {
 		assertSchemaRequest(t, req, priceSchema)
 	}
 	got := schemaRunResult(t, out)
-	if len(got.ExtractedParts) != len(sent) {
-		t.Errorf("%d parts, want one per chunk (%d)", len(got.ExtractedParts), len(sent))
+	if len(got.ExtractedParts) != 1 || got.ExtractedParts[0] != `{"price":3}` {
+		t.Errorf("extracted_parts = %q, want the one merged answer", got.ExtractedParts)
 	}
 	if got.ModelCalls == nil || *got.ModelCalls != int64(len(sent)) {
 		t.Errorf("model_calls = %v, want %d", got.ModelCalls, len(sent))
 	}
-	if !strings.Contains(got.Message, "not merged") {
-		t.Errorf("message = %q, want it to say the parts were not merged", got.Message)
+	if len(got.Conflicts) != 0 || got.Message != "" {
+		t.Errorf("conflicts = %+v, message = %q, want neither for equal answers", got.Conflicts, got.Message)
 	}
 }
