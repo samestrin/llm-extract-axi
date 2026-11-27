@@ -233,3 +233,66 @@ func TestExtractRelevantNoModelCallReportsNoModel(t *testing.T) {
 		t.Errorf("no model call was made, yet (exit %d): %s", code, out)
 	}
 }
+
+// Defends epic 15 T1: docs/output.md used to say `--min` was "independent of
+// the encoding", but --min only abbreviates the structured output (TOON and
+// --json); under --plain it has no effect. It also defends the failure path:
+// --plain --min printed a failed extract-links with no ERROR line, so a caller
+// saw a URL and an exit 1 with no reason. The probes run both ways first, so
+// the doc cannot pass while the code disagrees with it.
+func TestDocsMatchMinUnderPlain(t *testing.T) {
+	withAXI(t)
+	page := linksPage(t)
+
+	// --plain is the same text with and without --min.
+	_, plain, _ := runCLI(t, "extract-links", "--url", page, "--plain")
+	_, plainMin, _ := runCLI(t, "extract-links", "--url", page, "--plain", "--min")
+	if plain != plainMin {
+		t.Fatalf("--plain --min is not the same text as --plain; the probe, not the docs, is wrong:\n--plain:\n%s\n--plain --min:\n%s", plain, plainMin)
+	}
+
+	// A failure carries its reason under --plain, with or without --min.
+	bad := notFoundPage(t)
+	code, plainErr, _ := runCLI(t, "extract-links", "--url", bad, "--plain")
+	codeMin, plainErrMin, _ := runCLI(t, "extract-links", "--url", bad, "--plain", "--min")
+	if code != 1 || codeMin != 1 {
+		t.Fatalf("a failed fetch exited %d and %d under --plain, want 1 twice", code, codeMin)
+	}
+	if !strings.Contains(plainErr, "ERROR: ") || !strings.Contains(plainErrMin, "ERROR: ") {
+		t.Fatalf("--plain --min dropped the failure reason; the probe, not the docs, is wrong:\n--plain:\n%s\n--plain --min:\n%s", plainErr, plainErrMin)
+	}
+	if plainErr != plainErrMin {
+		t.Fatalf("--plain --min differs from --plain on a failure; the probe, not the docs, is wrong: plain=%q min=%q", plainErr, plainErrMin)
+	}
+
+	// Where --min does act: --json goes one line with abbreviated keys, and
+	// TOON abbreviates its keys.
+	_, jsonFull, _ := runCLI(t, "extract-links", "--url", page, "--json")
+	_, jsonMin, _ := runCLI(t, "extract-links", "--url", page, "--json", "--min")
+	if jsonFull == jsonMin || strings.Contains(strings.TrimSpace(jsonMin), "\n") || !strings.Contains(jsonMin, `"l":[`) {
+		t.Fatalf("--json --min is not one line of abbreviated JSON; the probe, not the docs, is wrong:\n%s", jsonMin)
+	}
+	_, toonFull, _ := runCLI(t, "extract-links", "--url", page)
+	_, toonMin, _ := runCLI(t, "extract-links", "--url", page, "--min")
+	if toonFull == toonMin || !strings.Contains(toonMin, "l[") || !strings.Contains(toonFull, "links[") {
+		t.Fatalf("--min did not abbreviate the TOON keys; the probe, not the docs, is wrong:\n%s", toonMin)
+	}
+
+	var bullet string
+	for _, line := range strings.Split(readRepoFile(t, "docs/output.md"), "\n") {
+		if strings.HasPrefix(line, "- `--min`:") {
+			bullet = line
+		}
+	}
+	if bullet == "" {
+		t.Fatal("docs/output.md has no `--min` bullet")
+	}
+	for _, want := range []string{"TOON", "--json", "no effect on `--plain`"} {
+		if !strings.Contains(bullet, want) {
+			t.Errorf("the docs/output.md --min bullet does not name %q: %s", want, bullet)
+		}
+	}
+	if strings.Contains(readRepoFile(t, "docs/output.md"), "independent of the encoding") {
+		t.Error("docs/output.md still claims --min is independent of the encoding, but it has no effect on --plain")
+	}
+}

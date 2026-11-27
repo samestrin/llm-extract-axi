@@ -767,10 +767,13 @@ func outputExtractLinksResult(cmd *cobra.Command, result ExtractLinksResult) err
 	}
 
 	formatter := output.New(extractLinksJSON, extractLinksMinimal, cmd.OutOrStdout())
-	return formatter.Print(finalResult, func(w io.Writer, data interface{}) {
-		r := data.(ExtractLinksResult)
-		if r.Error != "" {
-			_, _ = fmt.Fprintf(w, "ERROR: %s\n", r.Error)
+	return formatter.Print(finalResult, func(w io.Writer, _ interface{}) {
+		// The text prints the full result, never the minimal copy: under
+		// --plain the minimal copy would only drop the `error` field (it is
+		// carried as `e` there), printing a failure with no reason. --min has
+		// no effect on --plain text, with or without an error.
+		if result.Error != "" {
+			_, _ = fmt.Fprintf(w, "ERROR: %s\n", result.Error)
 			if len(result.Links) == 0 {
 				return
 			}
