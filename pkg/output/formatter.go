@@ -114,6 +114,14 @@ func (f *Formatter) processForMinimalJSON(data interface{}) interface{} {
 		return nil
 	}
 
+	// A json.RawMessage is already the JSON value it holds: pass it through
+	// verbatim. Walking it as a []byte turned it into an array of byte
+	// numbers ({"data":[123,34,...]}), and abbreviating its inner keys would
+	// rename the caller's own fields.
+	if raw, ok := data.(json.RawMessage); ok {
+		return raw
+	}
+
 	val := reflect.ValueOf(data)
 
 	// Handle pointers
