@@ -195,6 +195,7 @@ API Configuration:
 	cmd.Flags().StringVarP(&extractRelevantOutput, "output", "o", "", "Output file (default: stdout)")
 	cmd.Flags().IntVar(&extractRelevantTimeout, "timeout", 60, "API call timeout in seconds")
 	cmd.Flags().IntVar(&extractRelevantMaxChunks, "max-chunks", 8, "Most chunks of each input sent to the model, one call each")
+	cmd.Flags().StringVar(&extractRelevantSchema, "schema", "", "JSON Schema the answer must follow: inline JSON (starts with {) or a file path; not with a directory --path")
 	cmd.Flags().BoolVar(&extractRelevantJSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&extractRelevantMinimal, "min", false, "Output in minimal/token-optimized format")
 
@@ -232,6 +233,13 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 			return err
 		}
 	}
+
+	// The schema is checked before the API key: a bad one never works.
+	if err := checkSchemaRun(cmd.Flags().Changed("schema"), targetPath); err != nil {
+		return err
+	}
+	// A test may call the prompt builders directly after a run.
+	defer func() { relevantSchema = nil }()
 
 	// Load API configuration
 	config := llmapi.GetAPIConfig()
@@ -855,8 +863,11 @@ Rules:
 4. Do not add explanations or summaries - just extract the relevant portions
 5. Keep extracted sections in their original order
 6. Include enough surrounding context to make the extracted content understandable`
+	if relevantSchema != nil {
+		systemPrompt = relevantSchemaSystemPrompt
+	}
 
-	userPrompt := fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n%s", contextText, content)
+	userPrompt := relevantPromptHeader(contextText) + content
 
 	// Truncate content if too long (API limit considerations). The run
 	// reports the cut in its result's truncated field.
@@ -866,28 +877,63 @@ Rules:
 		llmPromptsCut.Add(1)
 	}
 
-	return sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout)
+	return sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout, relevantFormat())
 }
 
 // sendRelevantPrompt makes one extract-relevant model call, map or reduce,
 // under the per-call timeout, and counts each request it sends in model_calls
-// and bytes_sent, whether or not it answered.
-func sendRelevantPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int) (string, error) {
+// and bytes_sent, whether or not it answered. With a format it sends
+// response_format; an endpoint that refuses that with a 400 is sent the same
+// prompt once more without it, and the refused request is not counted: it
+// was turned away before any model read it.
+func sendRelevantPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int, format *llmapi.ResponseFormat) (string, error) {
+	messages := []llmapi.Message{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}}
+	promptBytes := int64(len(systemPrompt) + len(userPrompt))
+	if format != nil {
+		answer, sent, err := sendRelevantRequest(ctx, client, messages, format, timeout)
+		var apiErr *llmapi.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusBadRequest {
+			countRelevantCalls(sent, promptBytes)
+			return answer, err
+		}
+		// The 400 answered the last request sent; any before it (a retried
+		// 429 or 5xx) reached the endpoint and count.
+		countRelevantCalls(sent-1, promptBytes)
+	}
+	answer, sent, err := sendRelevantRequest(ctx, client, messages, nil, timeout)
+	countRelevantCalls(sent, promptBytes)
+	return answer, err
+}
+
+// sendRelevantRequest sends one request, with its retries, under the
+// per-call timeout, and returns how many were written to the endpoint. A
+// request written reached the model and may cost, even when it fails with a
+// status or times out, and a retry sends the prompt again; one that never
+// connected did not, so a model that was never reached is not reported as
+// used.
+func sendRelevantRequest(ctx context.Context, client *llmapi.LLMClient, messages []llmapi.Message, format *llmapi.ResponseFormat, timeout int) (string, int64, error) {
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	// A request written to the endpoint reached the model and may cost, even
-	// when it fails with a status or times out, and a retry sends the prompt
-	// again; one that never connected did not, so a model that was never
-	// reached is not reported as used.
+	var sent atomic.Int64
 	callCtx = httptrace.WithClientTrace(callCtx, &httptrace.ClientTrace{
 		WroteRequest: func(info httptrace.WroteRequestInfo) {
 			if info.Err == nil {
-				llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
-				llmCalls.Add(1)
+				sent.Add(1)
 			}
 		},
 	})
-	return client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	answer, err := client.CompleteMessagesWithFormat(callCtx, messages, format)
+	return answer, sent.Load(), err
+}
+
+// countRelevantCalls adds n requests of promptBytes each to model_calls and
+// bytes_sent.
+func countRelevantCalls(n, promptBytes int64) {
+	if n <= 0 {
+		return
+	}
+	llmCalls.Add(n)
+	llmBytesSent.Add(n * promptBytes)
 }
 
 func shouldExcludeDir(name string) bool {

@@ -1,6 +1,7 @@
 package llmapi
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -214,5 +215,35 @@ func TestLLMClient_TransientNetworkError_StillRetried(t *testing.T) {
 	mu.Unlock()
 	if got < 2 {
 		t.Errorf("server invoked %d times, want >= 2 (retry after connection reset)", got)
+	}
+}
+
+// Defends the structured request shape: CompleteMessagesWithFormat puts the
+// response_format on the wire, and CompleteMessages leaves it off, so an
+// endpoint that does not know the field is never sent it unasked.
+func TestCompleteMessagesWithFormatSendsResponseFormat(t *testing.T) {
+	var bodies []map[string]json.RawMessage
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{}"}}]}`))
+	}))
+	defer srv.Close()
+	c := NewLLMClient("k", srv.URL, "m")
+	msgs := []Message{{Role: "user", Content: "hi"}}
+	format := JSONSchemaFormat("extraction", json.RawMessage(`{"type":"object"}`))
+	if _, err := c.CompleteMessagesWithFormat(context.Background(), msgs, format); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CompleteMessages(context.Background(), msgs); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"type":"json_schema","json_schema":{"name":"extraction","schema":{"type":"object"}}}`
+	if got := string(bodies[0]["response_format"]); got != want {
+		t.Errorf("response_format = %s, want %s", got, want)
+	}
+	if _, ok := bodies[1]["response_format"]; ok {
+		t.Errorf("CompleteMessages sent response_format: %s", bodies[1]["response_format"])
 	}
 }

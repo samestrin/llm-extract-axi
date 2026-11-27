@@ -65,6 +65,27 @@ type ChatRequest struct {
 	Temperature float64   `json:"temperature,omitempty"`
 	MaxTokens   int       `json:"max_tokens,omitempty"`
 	Stream      bool      `json:"stream,omitempty"`
+	// ResponseFormat asks an OpenAI-compatible endpoint for structured
+	// output. Nil sends no field, so an endpoint that does not know it is
+	// never sent one.
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+}
+
+// ResponseFormat is the OpenAI-compatible response_format request field.
+type ResponseFormat struct {
+	Type       string          `json:"type"`
+	JSONSchema *JSONSchemaSpec `json:"json_schema,omitempty"`
+}
+
+// JSONSchemaSpec names a JSON Schema the answer must follow.
+type JSONSchemaSpec struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
+}
+
+// JSONSchemaFormat is the response_format of type json_schema for schema.
+func JSONSchemaFormat(name string, schema json.RawMessage) *ResponseFormat {
+	return &ResponseFormat{Type: "json_schema", JSONSchema: &JSONSchemaSpec{Name: name, Schema: schema}}
 }
 
 // Choice represents a response choice.
@@ -120,10 +141,17 @@ func (c *LLMClient) CompleteWithContext(ctx context.Context, systemPrompt, userP
 
 // CompleteMessages sends a chat completion request with custom messages.
 func (c *LLMClient) CompleteMessages(ctx context.Context, messages []Message) (string, error) {
+	return c.CompleteMessagesWithFormat(ctx, messages, nil)
+}
+
+// CompleteMessagesWithFormat sends a chat completion request with custom
+// messages and, when format is not nil, a response_format.
+func (c *LLMClient) CompleteMessagesWithFormat(ctx context.Context, messages []Message, format *ResponseFormat) (string, error) {
 	req := ChatRequest{
-		Model:       c.Model,
-		Messages:    messages,
-		Temperature: c.Temperature,
+		Model:          c.Model,
+		Messages:       messages,
+		Temperature:    c.Temperature,
+		ResponseFormat: format,
 	}
 
 	return c.doRequestWithRetry(ctx, req)
