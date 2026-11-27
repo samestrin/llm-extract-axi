@@ -32,8 +32,10 @@ func effectiveBaseURL(doc *html.Node, pageURL *url.URL) *url.URL {
 }
 
 // normalizeLinks finishes Readability's URL handling: fragments are resolved
-// against the effective base too, and unsafe or malformed targets lose their
-// href without losing the anchor's visible contents.
+// against the effective base too. Only http, https, mailto and tel targets
+// keep an href; any other scheme, and any malformed target, loses its href
+// without losing the anchor's visible contents. A target with no scheme
+// (relative or fragment) is kept, resolved against the base.
 func normalizeLinks(root *html.Node, baseURL *url.URL) {
 	for _, link := range dom.GetElementsByTagName(root, "a") {
 		href := strings.TrimSpace(dom.GetAttribute(link, "href"))
@@ -42,7 +44,16 @@ func normalizeLinks(root *html.Node, baseURL *url.URL) {
 			continue
 		}
 		target, err := url.Parse(href)
-		if err != nil || strings.EqualFold(target.Scheme, "javascript") || strings.EqualFold(target.Scheme, "data") {
+		if err != nil {
+			dom.RemoveAttribute(link, "href")
+			continue
+		}
+		// url.Parse lowercases the scheme, so this comparison is
+		// case-insensitive. An empty scheme is a relative or fragment
+		// target, resolved against the base below.
+		switch target.Scheme {
+		case "", "http", "https", "mailto", "tel":
+		default:
 			dom.RemoveAttribute(link, "href")
 			continue
 		}
