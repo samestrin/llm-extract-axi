@@ -20,11 +20,14 @@ const relevantChunkOverlapBytes = 200
 
 // relevantPromptHeader is the exact prefix extractRelevantContent builds
 // before the content: "Context: <contextText>\n\n---\n\nContent to extract
-// from:\n\n". A directory run's contextText already carries the "File: ..."
-// line. TestRelevantPromptHeaderMatchesTheRealPrompt pins this against the
+// from:\n\n", with the run's --schema after the context when there is one.
+// A directory run's contextText already carries the "File: ..." line. TestRelevantPromptHeaderMatchesTheRealPrompt pins this against the
 // real prompt, so a change to the prompt format cannot silently leave chunks
 // sized for the wrong header.
 func relevantPromptHeader(contextText string) string {
+	if relevantSchema != nil {
+		return fmt.Sprintf("Context: %s\n\nJSON Schema the answer must follow:\n%s\n\n---\n\nContent to extract from:\n\n", contextText, relevantSchema)
+	}
 	return fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n", contextText)
 }
 
@@ -214,6 +217,12 @@ func reduceParts(ctx context.Context, client *llmapi.LLMClient, r *chunkedRead, 
 	if r.err != nil || r.read < 2 || len(r.parts) < 2 {
 		return
 	}
+	// The reduce merges prose; under --schema it would turn JSON answers
+	// back into prose, so each chunk's answer is returned as it came.
+	if relevantSchema != nil {
+		r.reduceNote = fmt.Sprintf("the %d chunk answers to --schema are returned in document order, not merged into one", len(r.parts))
+		return
+	}
 	prompt := relevantReduceHeader(contextText) + strings.Join(r.parts, relevantReduceSeparator)
 	if len(prompt) > maxRelevantPromptBytes {
 		r.reduceNote = fmt.Sprintf("reduce skipped: the %d parts join to a %d-byte merge prompt, more than one prompt holds (%d bytes); they are returned unreduced in document order", len(r.parts), len(prompt), maxRelevantPromptBytes)
@@ -226,7 +235,7 @@ func reduceParts(ctx context.Context, client *llmapi.LLMClient, r *chunkedRead, 
 		return
 	}
 	defer func() { <-relevantCallSlots }()
-	answer, err := sendRelevantPrompt(ctx, client, relevantReduceSystemPrompt, prompt, extractRelevantTimeout)
+	answer, err := sendRelevantPrompt(ctx, client, relevantReduceSystemPrompt, prompt, extractRelevantTimeout, nil)
 	switch {
 	case err != nil:
 		r.err = fmt.Errorf("reduce call merging %d parts failed: %w", len(r.parts), err)

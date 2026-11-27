@@ -309,6 +309,9 @@ func TestSchemaUsageErrors(t *testing.T) {
 		{"non-local $dynamicRef", `{"$dynamicRef":"https://x.test/y"}`, file, "$dynamicRef"},
 		{"non-string $ref", `{"$ref":5}`, file, "$ref"},
 		{"directory path", priceSchema, dir, "directory"},
+		{"schema path is a directory", dir, file, "not a regular file"},
+		{"schema fills a prompt", `{"description":"` + strings.Repeat("x", maxRelevantPromptBytes) + `"}`, file, "must fit"},
+		{"schema file over the read cap", writeTemp(t, "huge.json", `{"description":"`+strings.Repeat("x", maxSchemaFileBytes)+`"}`), file, "over"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
