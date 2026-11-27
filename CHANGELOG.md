@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `extract-relevant --max-chunks N` (default 8) bounds model cost per input file, page or URL; input beyond the bound reports `truncated` with the chunks read and the total (or "at least" for a bounded local read), with recovery help. `model_calls` (`mc` in `--min`) and `bytes_sent` report the answered map and reduce calls.
 - `make bench-tokens` runs the token benchmark offline and writes its results: the table `benchmarks/results-tokens.md` and the counts in `benchmarks/results-tokens.json`. Besides `extract-links --axi`, it now measures `fetch --format markdown` against the raw HTML on the readable package's 10 committed fixtures (3.8x fewer tokens across the 8 with main content). A page with no main content records the named error, never a zero-count success, and a failed run writes nothing. `TestQuotedTokenCountsMatchARun` checks the committed counts and table against a fresh run.
 - `llm-extract fetch --format markdown` returns the main content of an HTML page as Markdown, with no model call. The envelope gains `source_bytes` (the fetched HTML's size), `title` and `byline`; `bytes`, `truncated`, `--head`, `--output` and `--plain` describe the Markdown. A page that is not HTML, or has no main content, exits 1 with the reason and a `help[]` line naming running again without `--format markdown`, never an empty body; `--format text` is still rejected (exit 2). The MCP `fetch` tool passes `format` through.
 
@@ -17,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `extract-relevant` reads files, pages and directory files in deterministic paragraph/line/rune chunks with a small overlap instead of cutting each input at 30,000 bytes, and directory text files over 100 KB are no longer skipped. Each chunk is extracted with the same prompt under `--concurrency`; two or more parts are merged by one reduce call when its whole prompt fits, otherwise the ordered parts stay unreduced with an explanatory `message`. Failed chunk or reduce calls keep the successful parts, name the failure and exit 1.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `196d678`, the commit the `v2.1.1` tag carries; every `file:line` pointer was re-checked and every probe re-run there. Rows 4, 6 and 7 and the catalog's observations now state the v2.1.1 fixes: an `extract-relevant` directory run's `skipped` counts and what it skips, `setup` refusing a link out of `--dir`, `fetch --output` checked before the request, and base-URL secrets redacted from model errors. The token benchmark re-run at `v2.1.1` gives the same 4240 and 1432 counts (3.0x), and `benchmarks/results-tokens.json` names `2.1.1`.
 - The catalog entry's `domain` is `Web data / Extraction`, the domain the axi.md submission (kunchenguid/axi#291) uses.
 
