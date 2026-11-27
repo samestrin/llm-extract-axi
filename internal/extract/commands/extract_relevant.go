@@ -84,6 +84,11 @@ type ExtractRelevantResult struct {
 	// file left out is never left out silently.
 	Skipped map[string]int `json:"skipped,omitempty"`
 	SK      map[string]int `json:"sk,omitempty"`
+	// InvalidOutput is the raw answer that still broke --schema after the
+	// one retry: the run failed, and this is what the model said, never data.
+	// For a chunked input it is the first such chunk's answer.
+	InvalidOutput string `json:"invalid_output,omitempty"`
+	IO            string `json:"io,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 

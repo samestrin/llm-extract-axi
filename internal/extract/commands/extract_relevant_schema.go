@@ -37,6 +37,9 @@ Rules:
 2. Take every value from the content; do not invent values
 3. Where the content has no value for a field the schema allows to be null or left out, use null or leave it out`
 
+// relevantSchemaRetryLead opens the feedback the retry adds to the prompt.
+const relevantSchemaRetryLead = "Your previous answer did not validate against the JSON Schema"
+
 // loadSchema reads and checks a --schema value. A value that starts with "{"
 // once trimmed is the schema itself; anything else is a file path. The schema
 // must be JSON with an object root, and every $ref and $dynamicRef in it must
