@@ -3,6 +3,8 @@ package llmapi
 import (
 	"errors"
 	"os"
+
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 // DefaultBaseURL is the default OpenAI API endpoint.
@@ -46,24 +48,16 @@ func GetAPIConfig() *APIConfig {
 // Like ErrBaseURLRequired it is a usage error (exit 2): the caller must fix
 // the configuration before a retry can succeed, so retrying unchanged never
 // helps and exit 1 would wrongly suggest it might.
-var ErrAPIKeyRequired error = usageError{errors.New("API key is required: set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL")}
-
-// usageError marks a configuration error the caller must fix before a retry
-// can succeed. output.ExitCodeFor reads UsageError and exits 2.
-type usageError struct{ error }
-
-func (usageError) UsageError() bool { return true }
-
-func (e usageError) Unwrap() error { return e.error }
+var ErrAPIKeyRequired = output.UsageError(errors.New("API key is required: set OPENAI_API_KEY, or ANTHROPIC_API_KEY with OPENAI_BASE_URL"))
 
 // ErrBaseURLRequired is what Validate returns when the key came from
 // ANTHROPIC_API_KEY and OPENAI_BASE_URL is not set. The client speaks the
 // OpenAI-compatible API and its default endpoint is OpenAI's, so going ahead
 // would send the Anthropic key to the wrong vendor. It never guesses an
 // endpoint; the caller names the one the key belongs to.
-var ErrBaseURLRequired error = usageError{errors.New("ANTHROPIC_API_KEY is set but OPENAI_BASE_URL is not: " +
+var ErrBaseURLRequired = output.UsageError(errors.New("ANTHROPIC_API_KEY is set but OPENAI_BASE_URL is not: " +
 	"llm-extract speaks the OpenAI-compatible API and will not send this key to the default " + DefaultBaseURL +
-	"; set OPENAI_BASE_URL to the OpenAI-compatible endpoint the key belongs to, or set OPENAI_API_KEY instead")}
+	"; set OPENAI_BASE_URL to the OpenAI-compatible endpoint the key belongs to, or set OPENAI_API_KEY instead"))
 
 // Validate checks that required configuration values are present, and that
 // the key is not about to go to an endpoint it does not belong to.

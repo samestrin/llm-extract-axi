@@ -2,9 +2,12 @@ package llmapi
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
 )
 
 func TestGetAPIConfig_EnvVars(t *testing.T) {
@@ -149,5 +152,24 @@ func TestValidateAnthropicKeyNeedsBaseURL(t *testing.T) {
 				t.Errorf("the error is not marked as a usage error, so it would exit 1: %v", err)
 			}
 		})
+	}
+}
+
+// Defends the single usage-error marker: llmapi once kept its own copy of
+// output's usageError, so the two could drift and one sentinel could stop
+// exiting 2. Both sentinels must carry output.UsageError's type and still
+// classify as exit 2.
+func TestConfigSentinelsUseOutputUsageError(t *testing.T) {
+	want := fmt.Sprintf("%T", output.UsageError(errors.New("x")))
+	for name, err := range map[string]error{
+		"ErrAPIKeyRequired":  ErrAPIKeyRequired,
+		"ErrBaseURLRequired": ErrBaseURLRequired,
+	} {
+		if got := fmt.Sprintf("%T", err); got != want {
+			t.Errorf("%s is a %s, want %s", name, got, want)
+		}
+		if got := output.ExitCodeFor(err); got != 2 {
+			t.Errorf("ExitCodeFor(%s) = %d, want 2", name, got)
+		}
 	}
 }
