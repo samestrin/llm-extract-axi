@@ -358,3 +358,24 @@ func TestReadmeConfigurationEnvVarsAreRead(t *testing.T) {
 		}
 	}
 }
+
+// TestReadmeLimitsMatchCatalogException defends the six model-input facts
+// against drifting apart between the README Limits section and the catalog
+// entry's exception field: a bound renamed or a number changed in one place
+// and not the other leaves the admission evidence describing another tool.
+// It checks the tokens, not every clause.
+func TestReadmeLimitsMatchCatalogException(t *testing.T) {
+	limits := readmeSection(t, "Limits")
+	m := regexp.MustCompile(`(?m)^\s*exception: "(.*)"$`).FindStringSubmatch(readRepoFile(t, catalogEntryPath))
+	if m == nil {
+		t.Fatalf("%s has no single-line exception field", catalogEntryPath)
+	}
+	for _, token := range []string{"--max-chunks", "model_calls", "100 links", "25,000", "session-end hook", "--full"} {
+		if !strings.Contains(limits, token) {
+			t.Errorf("README.md ## Limits no longer states %q", token)
+		}
+		if !strings.Contains(m[1], token) {
+			t.Errorf("%s's exception field no longer states %q", catalogEntryPath, token)
+		}
+	}
+}
