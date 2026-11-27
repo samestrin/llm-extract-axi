@@ -175,10 +175,11 @@ var tools = []tool{
 	},
 	{
 		name:        "extract_relevant",
-		description: "Reduce a file or directory to the content relevant to a context, using a model.",
+		description: "Reduce a file or directory to the content relevant to a context, using a model. With schema, the answer is JSON validated against that JSON Schema; a file path is required then, not a directory.",
 		schema: schema([]string{"path", "context"}, map[string]any{
 			"path":        prop("string", "File or directory path to process"),
 			"context":     prop("string", "What content to extract"),
+			"schema":      prop("string", "JSON Schema the answer must follow: inline JSON (starts with {) or a file path; not with a directory path"),
 			"concurrency": prop("integer", "Concurrent API calls for directory processing"),
 			"timeout":     prop("integer", "API call timeout in seconds"),
 		}),
@@ -187,6 +188,10 @@ var tools = []tool{
 				return nil, err
 			}
 			out := []string{"extract-relevant", "--path", a.str("path"), "--context", a.str("context")}
+			// schema passes through unchanged; the CLI decides inline JSON
+			// vs file path and rejects a bad schema or a directory path, so
+			// the server holds no logic of its own.
+			out = a.flagStr(out, "schema", "--schema")
 			out = a.flagInt(out, "concurrency", "--concurrency")
 			return a.flagInt(out, "timeout", "--timeout"), nil
 		},
