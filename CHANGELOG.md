@@ -18,13 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Docs, `extract-relevant --help` and the Agent Skill now describe epic 12's chunked reading: each input is read in chunks that each fit one 30,000-byte prompt, `--max-chunks` (default 8) bounds the chunks sent — one model call per chunk, counted in `model_calls` — and content past the bound is named in the `truncated` note with a `help[]` step to raise it. The claim that the model reads only the first 30,000 bytes of an input is removed from the README, `docs/output.md`, the AXI audit (Exception 2 and the summary) and the catalog entry; `extract-links --context`'s 25,000-byte ranking cut is unchanged. `TestDocsDescribeChunkedModelInput` probes the live bound and call count, then fails on a doc that still states the old cut.
 - `extract-relevant` reads files, pages and directory files in deterministic paragraph/line/rune chunks with a small overlap instead of cutting each input at 30,000 bytes, and directory text files over 100 KB are no longer skipped. Each chunk is extracted with the same prompt under `--concurrency`; two or more parts are merged by one reduce call when its whole prompt fits, otherwise the ordered parts stay unreduced with an explanatory `message`. Failed chunk or reduce calls keep the successful parts, name the failure and exit 1.
 - `docs/axi-audit.md` and the catalog entry's `reviewed_revision` are re-pinned at `196d678`, the commit the `v2.1.1` tag carries; every `file:line` pointer was re-checked and every probe re-run there. Rows 4, 6 and 7 and the catalog's observations now state the v2.1.1 fixes: an `extract-relevant` directory run's `skipped` counts and what it skips, `setup` refusing a link out of `--dir`, `fetch --output` checked before the request, and base-URL secrets redacted from model errors. The token benchmark re-run at `v2.1.1` gives the same 4240 and 1432 counts (3.0x), and `benchmarks/results-tokens.json` names `2.1.1`.
 - The catalog entry's `domain` is `Web data / Extraction`, the domain the axi.md submission (kunchenguid/axi#291) uses.
 
 ### Fixed
 
-- `extract-relevant --path` naming a FIFO or a device (`/dev/zero`, or a link to one) is an error instead of a run that hung or read without end, and a named file is read only as far as the model's 30,000-byte input.
+- `extract-relevant --path` naming a FIFO or a device (`/dev/zero`, or a link to one) is an error instead of a run that hung or read without end; a named file is read only as far as the model's input bound (since epic 12, `--max-chunks` chunks).
 - `extract-relevant -o` and `fetch --output` refuse (exit 2) a path that exists and is not a regular file: a FIFO blocked the run before it started. `/dev/null` is refused too.
 - README "Limits" says a hard link inside `--path` to a file outside it is read: no path check can tell it from the file's own name.
 

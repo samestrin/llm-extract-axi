@@ -151,6 +151,13 @@ Supports:
   - Local files and directories
   - URLs (HTTP/HTTPS) - HTML is automatically converted to clean text
 
+Large inputs are read in chunks: each chunk plus the context header fits
+one 30,000-byte prompt, and --max-chunks (default 8) bounds how many
+chunks of each input are sent, one model call per chunk. Chunks past the
+bound are not read; the result says so in a truncated note, and
+model_calls counts the requests that answered. Raise --max-chunks to
+read more of a large input; each extra chunk costs one more model call.
+
 Examples:
   # Local files and directories
   llm-extract extract-relevant --path ./src --context "API endpoint definitions"
