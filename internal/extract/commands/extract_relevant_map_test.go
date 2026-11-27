@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -19,11 +20,13 @@ import (
 // mapRecorder stands in for the model endpoint during a map pass. reply gets
 // each call's user message and returns the answer and an HTTP status; every
 // call is counted, and the bytes of the answered ones are summed the way
-// bytes_sent counts them: system prompt plus user prompt.
+// bytes_sent counts them: system prompt plus user prompt. sent sums the same
+// bytes over every call, failed ones included.
 type mapRecorder struct {
 	calls    atomic.Int64
 	answered atomic.Int64
 	bytes    atomic.Int64
+	sent     atomic.Int64
 	inFlight atomic.Int64
 	peak     atomic.Int64
 	mu       sync.Mutex
@@ -56,6 +59,7 @@ func newMapRecorder(t *testing.T, reply func(user string) (string, int)) *mapRec
 				user = m.Content
 			}
 		}
+		rec.sent.Add(int64(len(system) + len(user)))
 		rec.mu.Lock()
 		rec.prompts = append(rec.prompts, user)
 		rec.mu.Unlock()
@@ -369,6 +373,93 @@ func TestExtractRelevantFailedChunkKeepsTheGoodPartsAndExits1(t *testing.T) {
 	}
 	if got.Total != nil || got.Message != "" {
 		t.Errorf("a failed run reports a total or an empty-result message: %+v", got)
+	}
+}
+
+// Defends epic 12 AC2, every model call counted: a chunk call and a reduce
+// call that reached the model and got an error still cost a request, so they
+// are in model_calls and their prompts in bytes_sent. Counting only the calls
+// that answered under-reported the cost of a partial run.
+func TestExtractRelevantFailedCallsAreCountedInModelCallsAndBytesSent(t *testing.T) {
+	doc := paragraphDoc(1000) // four chunks
+	chunks := chunksFor(t, doc, "c")
+	failedChunk := func(user string) bool {
+		return !isReducePrompt(user) && firstParagraph(chunkBody(user)) == firstParagraph(chunks[1])
+	}
+	// A 500 or 429 is retried, so the model receives the same prompt again;
+	// each attempt is a request and is counted.
+	cases := []struct {
+		name   string
+		fails  func(user string) bool
+		status int
+	}{
+		{"failed chunk", failedChunk, http.StatusBadRequest},
+		{"failed reduce", isReducePrompt, http.StatusBadRequest},
+		{"retried 500 chunk", failedChunk, http.StatusInternalServerError},
+		{"retried 429 reduce", isReducePrompt, http.StatusTooManyRequests},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := newMapRecorder(t, func(user string) (string, int) {
+				if tc.fails(user) {
+					return "", tc.status
+				}
+				return "a part", http.StatusOK
+			})
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{"doc.md": doc})
+
+			code, out, _ := runCLI(t, "extract-relevant", "--path", filepath.Join(dir, "doc.md"), "--context", "c", "--json")
+			if code != 1 {
+				t.Fatalf("a failed call exited %d, want 1:\n%s", code, out)
+			}
+			got := decodeExtractResult(t, out)
+			if rec.answered.Load() == rec.calls.Load() {
+				t.Fatalf("no call failed: %d calls, all answered", rec.calls.Load())
+			}
+			if failed := rec.calls.Load() - rec.answered.Load(); tc.status != http.StatusBadRequest && failed < 2 {
+				t.Fatalf("%d failed request for a retried %d, want the retries too", failed, tc.status)
+			}
+			if got.ModelCalls == nil || *got.ModelCalls != rec.calls.Load() {
+				t.Errorf("model_calls = %v, want all %d calls the model received", got.ModelCalls, rec.calls.Load())
+			}
+			if got.BytesSent == nil || *got.BytesSent != rec.sent.Load() {
+				t.Errorf("bytes_sent = %v, want the %d bytes of every call sent", got.BytesSent, rec.sent.Load())
+			}
+		})
+	}
+}
+
+// Defends the line docs/output.md draws for epic 12 AC2: a call whose request
+// reached the model and then timed out is counted, because the model may have
+// run it; only a model that was never reached goes uncounted.
+func TestExtractRelevantTimedOutCallIsCounted(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		// Drained so the server sees the client hang up; held past --timeout.
+		_, _ = io.Copy(io.Discard, r.Body)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+	}))
+	t.Cleanup(srv.Close)
+	pointExtractRelevantAt(t, srv)
+	noRetryDelay(t)
+	src := filepath.Join(t.TempDir(), "a.md")
+	writeFiles(t, filepath.Dir(src), map[string]string{"a.md": "text"})
+
+	code, out, _ := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "--timeout", "1", "--json")
+	if code == 0 {
+		t.Fatalf("a timed-out call exited 0:\n%s", out)
+	}
+	got := decodeExtractResult(t, out)
+	if calls.Load() == 0 {
+		t.Fatal("the fake model never received the request")
+	}
+	if got.ModelCalls == nil || *got.ModelCalls != calls.Load() || got.BytesSent == nil || *got.BytesSent == 0 {
+		t.Errorf("model_calls = %v, bytes_sent = %v; want the %d requests the model received", got.ModelCalls, got.BytesSent, calls.Load())
 	}
 }
 
