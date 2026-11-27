@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -417,6 +418,39 @@ func TestExtractRelevantFailedCallsAreCountedInModelCallsAndBytesSent(t *testing
 				t.Errorf("bytes_sent = %v, want the %d bytes of every call sent", got.BytesSent, rec.sent.Load())
 			}
 		})
+	}
+}
+
+// Defends the line docs/output.md draws for epic 12 AC2: a call whose request
+// reached the model and then timed out is counted, because the model may have
+// run it; only a model that was never reached goes uncounted.
+func TestExtractRelevantTimedOutCallIsCounted(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		// Drained so the server sees the client hang up; held past --timeout.
+		_, _ = io.Copy(io.Discard, r.Body)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+	}))
+	t.Cleanup(srv.Close)
+	pointExtractRelevantAt(t, srv)
+	noRetryDelay(t)
+	src := filepath.Join(t.TempDir(), "a.md")
+	writeFiles(t, filepath.Dir(src), map[string]string{"a.md": "text"})
+
+	code, out, _ := runCLI(t, "extract-relevant", "--path", src, "--context", "c", "--timeout", "1", "--json")
+	if code == 0 {
+		t.Fatalf("a timed-out call exited 0:\n%s", out)
+	}
+	got := decodeExtractResult(t, out)
+	if calls.Load() == 0 {
+		t.Fatal("the fake model never received the request")
+	}
+	if got.ModelCalls == nil || *got.ModelCalls != calls.Load() || got.BytesSent == nil || *got.BytesSent == 0 {
+		t.Errorf("model_calls = %v, bytes_sent = %v; want the %d requests the model received", got.ModelCalls, got.BytesSent, calls.Load())
 	}
 }
 

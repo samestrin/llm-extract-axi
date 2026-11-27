@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"sort"
@@ -70,8 +71,8 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
-	// ModelCalls counts the model calls that answered, one per chunk read;
-	// BytesSent is the sum of their prompts.
+	// ModelCalls counts the model calls sent, one per chunk read plus any
+	// reduce, failed calls included; BytesSent is the sum of their prompts.
 	ModelCalls *int64 `json:"model_calls,omitempty"`
 	MC         *int64 `json:"mc,omitempty"`
 	// Truncated says the model read a cut-down input: a prompt longer than
@@ -105,7 +106,7 @@ var llmBytesSent atomic.Int64
 // so. Reset with llmBytesSent.
 var llmPrompts, llmPromptsCut atomic.Int64
 
-// llmCalls counts the extract-relevant model calls that answered in one run:
+// llmCalls counts the extract-relevant model calls sent in one run:
 // model_calls. Reset with llmBytesSent.
 var llmCalls atomic.Int64
 
@@ -155,7 +156,7 @@ Large inputs are read in chunks: each chunk plus the context header fits
 one 30,000-byte prompt, and --max-chunks (default 8) bounds how many
 chunks of each input are sent, one model call per chunk. Chunks past the
 bound are not read; the result says so in a truncated note, and
-model_calls counts the requests that answered. Raise --max-chunks to
+model_calls counts the requests sent, failed ones included. Raise --max-chunks to
 read more of a large input; each extra chunk costs one more model call.
 
 Examples:
@@ -869,18 +870,29 @@ Rules:
 
 // sendRelevantPrompt makes one extract-relevant model call, map or reduce,
 // under the per-call timeout, and counts it in model_calls and bytes_sent
-// once it has answered.
+// once the request has been sent, whether or not it answered.
 func sendRelevantPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
+	// A request written to the endpoint reached the model and may cost, even
+	// when it fails with a status or times out; one that never connected did
+	// not, so a model that was never reached is not reported as used.
+	var sent atomic.Bool
+	callCtx = httptrace.WithClientTrace(callCtx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil {
+				sent.Store(true)
+			}
+		},
+	})
 	answer, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
+	if err == nil || sent.Load() {
+		llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+		llmCalls.Add(1)
+	}
 	if err != nil {
 		return "", err
 	}
-	// Counted once the call has answered, so a model that was never reached
-	// is not reported as used.
-	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
-	llmCalls.Add(1)
 	return answer, nil
 }
 
