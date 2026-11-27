@@ -289,13 +289,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if errors.As(err, &reported) {
 		return code
 	}
-	switch errorFormat(cmd, args, code) {
+	format, minimal := errorFormat(cmd, args, code)
+	switch format {
 	case formatTOON:
 		_ = output.EncodeAXI(stdout, axiErrorDoc(cmd, err, code))
 	case formatJSON:
-		// The {error, message} shape of Formatter.PrintError, built here
-		// because PrintError's writer is the command's, not run()'s.
-		doc, _ := json.MarshalIndent(map[string]any{"error": true, "message": err.Error()}, "", "  ")
+		// The shape of Formatter.PrintError, built here because PrintError's
+		// writer is the command's, not run()'s: under --min the keys are
+		// abbreviated and the document is one line, as a minimal result is.
+		var doc []byte
+		if minimal {
+			doc, _ = json.Marshal(map[string]any{"err": true, "msg": err.Error()})
+		} else {
+			doc, _ = json.MarshalIndent(map[string]any{"error": true, "message": err.Error()}, "", "  ")
+		}
 		_, _ = fmt.Fprintln(stdout, string(doc))
 	default:
 		_, _ = fmt.Fprintf(stdout, "Error: %v\n", err)
@@ -338,18 +345,23 @@ const (
 // so the parsed flags can be stale and the arguments are scanned instead, last
 // occurrence winning. Otherwise the parsed flags are the answer, read here
 // rather than from GlobalAXIOutput: cobra checks the argument count before the
-// pre-run publishes it.
-func errorFormat(cmd *cobra.Command, args []string, code int) outFormat {
+// pre-run publishes it. minimal reports --min, which only JSON acts on.
+func errorFormat(cmd *cobra.Command, args []string, code int) (format outFormat, minimal bool) {
 	if code == int(goaxi.ExitUsage) {
 		return argsFormat(cmd, args)
 	}
+	set := func(name string) bool {
+		f := cmd.Flags().Lookup(name)
+		return f != nil && f.Value.String() == "true"
+	}
+	minimal = set("min")
 	if plainOutput || !axiOutput {
-		return formatPlain
+		return formatPlain, minimal
 	}
-	if f := cmd.Flags().Lookup("json"); f != nil && f.Value.String() == "true" {
-		return formatJSON
+	if set("json") {
+		return formatJSON, minimal
 	}
-	return formatTOON
+	return formatTOON, minimal
 }
 
 // argsFormat scans args for the format flags the way pflag would read them
@@ -361,7 +373,8 @@ func errorFormat(cmd *cobra.Command, args []string, code int) outFormat {
 // command the run reached; its flags, own and inherited, say which ones take a
 // value. --json is read wherever it appears, even on a command that lacks it:
 // the caller asked for JSON, and an unknown --json is still a JSON caller.
-func argsFormat(cmd *cobra.Command, args []string) outFormat {
+// --min is read the same way and returned as minimal.
+func argsFormat(cmd *cobra.Command, args []string) (format outFormat, minimal bool) {
 	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
 	lookup := func(name string) *pflag.Flag {
 		if f := cmd.Flags().Lookup(name); f != nil {
@@ -389,7 +402,7 @@ func argsFormat(cmd *cobra.Command, args []string) outFormat {
 		}
 		return cur
 	}
-	plain, axi, jsonOut := false, true, false
+	plain, axi, jsonOut, minOut := false, true, false, false
 scan:
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -402,6 +415,8 @@ scan:
 			axi = boolArg(a, "axi", axi)
 		case a == "--json" || strings.HasPrefix(a, "--json="):
 			jsonOut = boolArg(a, "json", jsonOut)
+		case a == "--min" || strings.HasPrefix(a, "--min="):
+			minOut = boolArg(a, "min", minOut)
 		case strings.HasPrefix(a, "--"):
 			if !strings.Contains(a, "=") && takesValue(lookup(a[2:])) {
 				i++
@@ -427,11 +442,11 @@ scan:
 	}
 	switch {
 	case plain || !axi:
-		return formatPlain
+		return formatPlain, minOut
 	case jsonOut:
-		return formatJSON
+		return formatJSON, minOut
 	}
-	return formatTOON
+	return formatTOON, minOut
 }
 
 // axiErrorDoc builds the TOON error for err: the {error, message} shape of
