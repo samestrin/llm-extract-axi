@@ -305,7 +305,7 @@ func TestArgsFormat(t *testing.T) {
 		{[]string{"--", "--plain"}, formatTOON},
 	}
 	for _, tc := range cases {
-		if got := argsFormat(RootCmd, tc.args); got != tc.want {
+		if got, _ := argsFormat(RootCmd, tc.args); got != tc.want {
 			t.Errorf("argsFormat(%q) = %v, want %v", tc.args, got, tc.want)
 		}
 	}

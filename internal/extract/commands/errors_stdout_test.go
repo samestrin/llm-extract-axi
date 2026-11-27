@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -88,5 +89,88 @@ func TestErrorsGoToStdoutInEveryFormat(t *testing.T) {
 				f.check(t, stdout)
 			})
 		}
+	}
+	minErrorsInEveryFormat(t)
+}
+
+// minFormats are the formats an error under --min is printed in: JSON takes
+// the abbreviated keys of output.KeyAbbreviations, as Formatter.PrintError
+// does; TOON and plain text are what they are without --min.
+var minFormats = []stdoutFormat{
+	stdoutFormats[0],
+	stdoutFormats[1],
+	{"json", "--json", func(t *testing.T, stdout string) {
+		t.Helper()
+		if strings.Count(stdout, "\n") != 1 {
+			t.Errorf("minimal JSON is not one line: %q", stdout)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+			t.Fatalf("stdout is not one JSON document: %v\n%s", err, stdout)
+		}
+		if doc["err"] != true {
+			t.Errorf("err is %#v, want true:\n%s", doc["err"], stdout)
+		}
+		if msg, _ := doc["msg"].(string); msg == "" {
+			t.Errorf("no msg:\n%s", stdout)
+		}
+		for _, k := range []string{"error", "message", "n"} {
+			if _, ok := doc[k]; ok {
+				t.Errorf("minimal JSON has the key %q:\n%s", k, stdout)
+			}
+		}
+	}},
+	stdoutFormats[3],
+}
+
+// Defends the minimal error shape: under --json --min a command's own result
+// came out abbreviated, but an error printed by run() kept the full
+// {error, message} keys, so a --min caller had to read two key sets. The rows
+// cover both ways run() learns the format: scanning the arguments on a usage
+// error (exit 2) and reading the parsed flags on a failure (exit 1).
+func minErrorsInEveryFormat(t *testing.T) {
+	noAPIKey(t)
+	for _, f := range minFormats {
+		flags := []string{"--min"}
+		if f.flag != "" {
+			flags = append(flags, f.flag)
+		}
+		with := func(args ...string) []string { return append(args, flags...) }
+		// pflag stops at --bogus, so --min after it is found only by the scan.
+		cases := []struct {
+			name string
+			args []string
+			code int
+		}{
+			{"extract-links unknown flag before", with("extract-links", "--bogus"), int(goaxi.ExitUsage)},
+			{"extract-links unknown flag after", append(append([]string{"extract-links"}, flags...), "--bogus"), int(goaxi.ExitUsage)},
+			{"extract-links bad URL", with("extract-links", "--url", "not-a-url"), int(goaxi.ExitUsage)},
+			{"extract-relevant unknown flag before", with("extract-relevant", "--bogus"), int(goaxi.ExitUsage)},
+			{"extract-relevant no API key", with("extract-relevant", "--path", ".", "--context", "x"), int(goaxi.ExitUsage)},
+		}
+		for _, c := range cases {
+			t.Run("min "+f.name+"/"+c.name, func(t *testing.T) {
+				code, stdout, stderr := runCLI(t, c.args...)
+				if code != c.code {
+					t.Errorf("%v exited %d, want %d", c.args, code, c.code)
+				}
+				if stderr != "" {
+					t.Errorf("%v wrote to stderr: %q", c.args, stderr)
+				}
+				f.check(t, stdout)
+			})
+		}
+		t.Run("min "+f.name+"/extract-relevant missing path", func(t *testing.T) {
+			t.Setenv("OPENAI_API_KEY", "dummy")
+			args := with("extract-relevant", "--path", filepath.Join(t.TempDir(), "absent"), "--context", "x")
+			code, stdout, stderr := runCLI(t, args...)
+			if code != int(goaxi.ExitError) {
+				t.Errorf("%v exited %d, want %d", args, code, goaxi.ExitError)
+			}
+			if stderr != "" {
+				t.Errorf("%v wrote to stderr: %q", args, stderr)
+			}
+			f.check(t, stdout)
+		})
 	}
 }
