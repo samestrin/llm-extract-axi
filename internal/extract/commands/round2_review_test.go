@@ -346,6 +346,33 @@ func TestFetchHeadWithOutputIsRefused(t *testing.T) {
 	}
 }
 
+// Defends epic 14 T2: --full was silently ignored with --output (the file
+// gets the whole body and the envelope leaves body out, so --full printed
+// nothing more). It is a usage error naming both flags now, before the
+// request; --output alone still saves the file.
+func TestFetchFullWithOutputIsRefused(t *testing.T) {
+	page, hits := hitCounter(t)
+	dst := filepath.Join(t.TempDir(), "page.html")
+	code, out, _ := runCLI(t, "fetch", page, "--output", dst, "--full")
+	if code != 2 || !strings.Contains(out, "--full") || !strings.Contains(out, "--output") {
+		t.Errorf("exit %d, want 2 naming --full and --output:\n%s", code, out)
+	}
+	if hits.Load() != 0 {
+		t.Error("request made")
+	}
+	if _, err := os.Stat(dst); err == nil {
+		t.Error("output file written")
+	}
+
+	code, out, _ = runCLI(t, "fetch", page, "--output", dst)
+	if code != 0 {
+		t.Fatalf("--output alone exited %d:\n%s", code, out)
+	}
+	if _, err := os.Stat(dst); err != nil {
+		t.Errorf("--output alone wrote no file: %v", err)
+	}
+}
+
 // Defends EST-8259 item 7: the line `fetch --output --plain` prints was
 // documented nowhere; the docs said --plain prints body bytes.
 func TestFetchSavedLineIsDocumented(t *testing.T) {
