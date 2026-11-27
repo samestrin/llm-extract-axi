@@ -37,9 +37,9 @@ Pin a version instead of installing the latest release:
 curl -fsSL https://raw.githubusercontent.com/samestrin/llm-extract-axi/main/install.sh | LLM_EXTRACT_VERSION=v2.1.1 bash
 ```
 
-If `~/.local/bin` is not on `PATH`, the installer says so and prints the `export` line to add.
+If `~/.local/bin` is not on your `PATH`, the installer says so and prints the `export` line to add.
 
-To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing` (on macOS, `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`), and copy the binary onto `PATH`.
+To install by hand instead, download `llm-extract-<os>-<arch>` (or `llm-extract-windows-amd64.exe` on Windows) and `SHA256SUMS.txt` from the [latest release](https://github.com/samestrin/llm-extract-axi/releases/latest), verify with `sha256sum -c SHA256SUMS.txt --ignore-missing` (on macOS, `shasum -a 256 -c SHA256SUMS.txt --ignore-missing`), and copy the binary onto your `PATH`.
 
 ### go install
 
@@ -88,7 +88,7 @@ Re-run the install one-liner; it replaces the binaries only after the new downlo
 
 ### Uninstall
 
-Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or the `INSTALL_DIR`). To remove the agent integrations, delete the hook entries `setup` added to `.claude/settings.json` and `.codex/hooks.json`, the `.claude/skills/llm-extract/` directory and the `.opencode/plugins/llm-extract.js` file in the project.
+Delete `llm-extract` and `llm-extract-mcp` from `$HOME/.local/bin` (or your `INSTALL_DIR`). To remove the agent integrations, delete the hook entries `setup` added to `.claude/settings.json` and `.codex/hooks.json`, the `.claude/skills/llm-extract/` directory and the `.opencode/plugins/llm-extract.js` file in the project.
 
 ## Quick start
 

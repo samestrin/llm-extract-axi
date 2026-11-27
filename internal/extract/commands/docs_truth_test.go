@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 )
 
 // These tests defend the user-facing docs (README.md, docs/output.md and the
@@ -250,6 +251,112 @@ func TestDocsDescribeChunkedModelInput(t *testing.T) {
 	}
 	if !strings.Contains(help.String(), "chunk") {
 		t.Error("extract-relevant --help does not say the input is read in chunks")
+	}
+}
+
+// standaloneOurRe is the docs-style guard of epic 15 T2: the house style
+// speaks to the reader ("your"), never about the authors ("our"). The old
+// ad-hoc check was `rg "our "`, which also matched "your " and "four " and
+// forced unnatural prose ("not on PATH", "4 fields") into the docs. \bour\b
+// matches only the standalone word; (?i) so a sentence-initial "Our" is
+// caught too.
+var standaloneOurRe = regexp.MustCompile(`(?i)\bour\b`)
+
+// ourStyleViolations returns each line holding a standalone "our", numbered
+// from 1, so a failure names the file and line to fix.
+func ourStyleViolations(s string) []string {
+	var bad []string
+	for i, line := range strings.Split(s, "\n") {
+		if standaloneOurRe.MatchString(line) {
+			bad = append(bad, fmt.Sprintf("%d: %s", i+1, line))
+		}
+	}
+	return bad
+}
+
+// TestDocsStyleGuardBothWays proves the guard itself, independent of the
+// committed docs: it must flag a standalone "our" (any case, any position,
+// beside punctuation) and must pass the words the old `rg "our "` check
+// false-positived on — "your" and "four" — plus other words that merely
+// contain the letters. Without this, a guard narrowed into matching nothing
+// would still "pass" on clean docs.
+func TestDocsStyleGuardBothWays(t *testing.T) {
+	for _, bad := range []string{
+		"our tool keeps the diff small",
+		"Our tool keeps the diff small",
+		"OUR tool keeps the diff small",
+		"keep the diff small — our rule",
+		"the rule (our own) holds",
+		"our",
+	} {
+		if got := ourStyleViolations(bad); len(got) == 0 {
+			t.Errorf("guard passed a standalone our: %q", bad)
+		}
+	}
+	for _, good := range []string{
+		"copy the binary onto your PATH",
+		"rows default to four fields",
+		"yours, hourly, colour, flour, pour, labour, four",
+		"your four-colour output",
+	} {
+		if got := ourStyleViolations(good); len(got) != 0 {
+			t.Errorf("guard flagged %q, which has no standalone our: %v", good, got)
+		}
+	}
+}
+
+// TestDocsAvoidStandaloneOur defends the house style on the real docs: no
+// standalone "our" in README.md, CHANGELOG.md or any text file under docs/.
+// Binary files (the demo GIF) are skipped by UTF-8 validity, so a new text
+// file under docs/ is covered without maintaining an extension list.
+func TestDocsAvoidStandaloneOur(t *testing.T) {
+	for _, path := range []string{"README.md", "CHANGELOG.md"} {
+		for _, v := range ourStyleViolations(readRepoFile(t, path)) {
+			t.Errorf("%s:%s uses the standalone word our; speak to the reader (your) instead", path, v)
+		}
+	}
+	root := filepath.Join("..", "..", "..", "docs")
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !utf8.Valid(b) {
+			return nil // binary, e.g. docs/demo/llm-extract.gif
+		}
+		rel, _ := filepath.Rel(filepath.Join("..", "..", ".."), path)
+		for _, v := range ourStyleViolations(string(b)) {
+			t.Errorf("%s:%s uses the standalone word our; speak to the reader (your) instead", rel, v)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDocsKeepNaturalProse pins the prose the old `rg "our "` check forced
+// out (epic 15 T2): second-person "your PATH" / "your INSTALL_DIR" in the
+// README and "four fields" (house style spells numbers under ten) in the
+// audit and the catalog entry. It fails if a future edit dodges the style
+// guard by mangling the prose again instead of writing it naturally.
+func TestDocsKeepNaturalProse(t *testing.T) {
+	readme := readRepoFile(t, "README.md")
+	for _, want := range []string{"your `PATH`", "your `INSTALL_DIR`"} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("README does not say %q; the second-person prose was restored in epic 15 T2 and must stay", want)
+		}
+	}
+	for _, path := range []string{"docs/axi-audit.md", "docs/axi-catalog-entry.yaml"} {
+		if s := readRepoFile(t, path); !strings.Contains(s, "four fields") {
+			t.Errorf("%s does not say \"four fields\"; house style spells numbers under ten (epic 15 T2)", path)
+		}
 	}
 }
 
