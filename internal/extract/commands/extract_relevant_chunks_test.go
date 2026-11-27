@@ -301,6 +301,41 @@ func TestChunkContentEdges(t *testing.T) {
 	}
 }
 
+// Defends progress at tiny budgets: with a 4-byte budget the overlap is 1
+// byte and a rune cut can keep only 1 byte, so subtracting the overlap would
+// leave the next chunk starting where this one did -- an endless loop. Every
+// chunk must advance and every byte must still be covered.
+func TestChunkContentAdvancesAtTinyBudgets(t *testing.T) {
+	content := "a" + strings.Repeat("😀", 30)
+	chunks, err := chunkContent(content, maxRelevantPromptBytes-4)
+	if err != nil {
+		t.Fatalf("chunkContent: %v", err)
+	}
+	covered := 0
+	for i, c := range chunks {
+		if len(c) == 0 || len(c) > 4 {
+			t.Fatalf("chunk %d is %d bytes, want 1..4", i, len(c))
+		}
+		// The chunk starts at the covered edge, or at most 1 byte (the
+		// whole overlap at this budget) before it.
+		back := 0
+		if !strings.HasPrefix(content[covered:], c) {
+			back = 1
+		}
+		start := covered - back
+		if start < 0 || start+len(c) > len(content) || content[start:start+len(c)] != c {
+			t.Fatalf("chunk %d %q is not at the covered edge", i, c)
+		}
+		if start+len(c) <= covered {
+			t.Fatalf("chunk %d does not advance past byte %d", i, covered)
+		}
+		covered = start + len(c)
+	}
+	if covered != len(content) {
+		t.Errorf("tiny-budget chunks cover %d of %d bytes", covered, len(content))
+	}
+}
+
 // Defends the overlap itself: consecutive chunks must repeat a small tail of
 // the previous chunk so a fact straddling a boundary is still in one piece in
 // some chunk.
