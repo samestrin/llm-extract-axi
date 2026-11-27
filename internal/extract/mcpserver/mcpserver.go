@@ -175,7 +175,7 @@ var tools = []tool{
 	},
 	{
 		name:        "extract_relevant",
-		description: "Reduce a file or directory to the content relevant to a context, using a model. With schema, the answer is JSON validated against that JSON Schema; a file path is required then, not a directory.",
+		description: "Reduce a file or directory to the content relevant to a context, using a model. With schema, the tool asks the model for JSON that follows that JSON Schema; a file path is required then, not a directory.",
 		schema: schema([]string{"path", "context"}, map[string]any{
 			"path":        prop("string", "File or directory path to process"),
 			"context":     prop("string", "What content to extract"),
