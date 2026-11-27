@@ -123,6 +123,11 @@ func TestExtractRelevantReduceOverOnePromptIsSkippedWithAMessage(t *testing.T) {
 	if !strings.Contains(out, "reduce skipped") || !strings.Contains(out, want[0]) {
 		t.Errorf("plain text drops the message or the parts:\n%.300s", out)
 	}
+	// With -o the plain summary on stdout still says the parts are unreduced.
+	_, out, _ = runCLI(t, "extract-relevant", "--path", filepath.Join(dir, "doc.md"), "--context", "c", "--plain", "-o", filepath.Join(dir, "out.md"))
+	if !strings.Contains(out, "Note: reduce skipped") {
+		t.Errorf("the -o summary drops the message:\n%s", out)
+	}
 }
 
 // Defends the boundary of "fits one prompt": a reduce prompt of exactly

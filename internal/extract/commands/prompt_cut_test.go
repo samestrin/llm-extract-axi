@@ -67,7 +67,8 @@ func checkCutPrompt(t *testing.T, prompt string, limit int, note string) {
 // the 30000th byte mid-character. Since epic 12 the input is chunked rather
 // than cut, so this checks the CLI end of that: every prompt sent is whole
 // characters and within the cap, none carries the cut note, nothing reports
-// truncated, and every chunk was sent.
+// truncated, and every chunk was sent, then
+// one reduce call.
 func TestExtractRelevantCutsPromptOnARuneBoundary(t *testing.T) {
 	for _, ch := range []string{"€", "😀"} {
 		for pad := 0; pad < len(ch); pad++ {
@@ -94,9 +95,11 @@ func TestExtractRelevantCutsPromptOnARuneBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// One call per chunk, and one reduce merging their parts; the
+			// reduce prompt is held to the same checks.
 			sent := prompts()
-			if len(sent) != len(chunks) {
-				t.Fatalf("%q pad %d: %d model calls, want one per chunk (%d)", ch, pad, len(sent), len(chunks))
+			if len(sent) != len(chunks)+1 {
+				t.Fatalf("%q pad %d: %d model calls, want one per chunk (%d) and the reduce", ch, pad, len(sent), len(chunks))
 			}
 			for i, p := range sent {
 				if !utf8.ValidString(p) || strings.ContainsRune(p, utf8.RuneError) {
