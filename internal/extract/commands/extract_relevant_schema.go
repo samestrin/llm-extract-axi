@@ -2,12 +2,15 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/google/jsonschema-go/jsonschema"
 
 	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
 	"github.com/samestrin/llm-extract-axi/v2/pkg/output"
@@ -37,8 +40,102 @@ Rules:
 2. Take every value from the content; do not invent values
 3. Where the content has no value for a field the schema allows to be null or left out, use null or leave it out`
 
+// relevantResolved is relevantSchema ready to validate answers against, set
+// and cleared with it.
+var relevantResolved *jsonschema.Resolved
+
+// draft202012 is the only $schema the validator checks against.
+const draft202012 = "https://json-schema.org/draft/2020-12/schema"
+
 // relevantSchemaRetryLead opens the feedback the retry adds to the prompt.
 const relevantSchemaRetryLead = "Your previous answer did not validate against the JSON Schema"
+
+// schemaFeedbackBytes is the room every --schema prompt leaves for the
+// retry's feedback: the chunker sizes chunks this much smaller, and the
+// feedback is cut to fit it, so the retry fits maxRelevantPromptBytes too.
+const schemaFeedbackBytes = 2000
+
+// schemaFeedbackCut marks validation errors cut to fit schemaFeedbackBytes.
+const schemaFeedbackCut = " [cut]"
+
+// invalidOutputError is an answer that still broke --schema after the retry.
+// output is the raw answer, for the result's invalid_output.
+type invalidOutputError struct {
+	output, problem string
+}
+
+func (e *invalidOutputError) Error() string {
+	return "the answer does not validate against --schema after one retry: " + e.problem
+}
+
+// resolveSchema prepares a checked schema for validation. The validator
+// checks draft 2020-12 only, so another $schema is refused, as is a schema
+// it cannot resolve: an answer that could never be checked is not asked for.
+func resolveSchema(schema json.RawMessage) (*jsonschema.Resolved, error) {
+	refuse := func(err error) error {
+		return output.UsageError(fmt.Errorf("--schema: not a draft 2020-12 JSON Schema the validator can use: %w", err))
+	}
+	var s jsonschema.Schema
+	if err := json.Unmarshal(schema, &s); err != nil {
+		return nil, refuse(err)
+	}
+	if s.Schema != "" && s.Schema != draft202012 {
+		return nil, refuse(fmt.Errorf("$schema is %q", s.Schema))
+	}
+	resolved, err := s.Resolve(nil)
+	if err != nil {
+		return nil, refuse(err)
+	}
+	return resolved, nil
+}
+
+// answerProblem returns why answer does not validate against the run's
+// schema, or "" when it does. An answer that is not one JSON value, NONE and
+// an empty answer included, does not validate.
+func answerProblem(answer string) string {
+	var v any
+	if err := json.Unmarshal([]byte(answer), &v); err != nil {
+		return fmt.Sprintf("the answer is not JSON: %v", err)
+	}
+	if err := relevantResolved.Validate(v); err != nil {
+		return err.Error()
+	}
+	return ""
+}
+
+// schemaFeedback is what the retry adds to the first prompt: the validation
+// errors, cut to fit schemaFeedbackBytes.
+func schemaFeedback(problem string) string {
+	lead := "\n\n---\n\n" + relevantSchemaRetryLead + ":\n"
+	tail := "\n\nAnswer again with one JSON value that validates against the schema, and nothing else."
+	if room := schemaFeedbackBytes - len(lead) - len(tail); len(problem) > room {
+		problem = cutAtRuneBoundary(problem, room-len(schemaFeedbackCut)) + schemaFeedbackCut
+	}
+	return lead + problem + tail
+}
+
+// sendSchemaPrompt makes a --schema extraction call and validates the answer.
+// An invalid answer is asked for once more, the validation errors added to
+// the prompt; an answer invalid again is an invalidOutputError, never
+// returned as data. Each call is counted in model_calls.
+func sendSchemaPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int) (string, error) {
+	answer, err := sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout, relevantFormat())
+	if err != nil {
+		return "", err
+	}
+	problem := answerProblem(answer)
+	if problem == "" {
+		return answer, nil
+	}
+	answer, err = sendRelevantPrompt(ctx, client, systemPrompt, userPrompt+schemaFeedback(problem), timeout, relevantFormat())
+	if err != nil {
+		return "", fmt.Errorf("the retry after an answer that did not validate against --schema failed: %w", err)
+	}
+	if problem := answerProblem(answer); problem != "" {
+		return "", &invalidOutputError{output: answer, problem: problem}
+	}
+	return answer, nil
+}
 
 // loadSchema reads and checks a --schema value. A value that starts with "{"
 // once trimmed is the schema itself; anything else is a file path. The schema
@@ -75,9 +172,9 @@ func loadSchema(value string) (json.RawMessage, error) {
 	if err := json.Compact(&compact, data); err != nil {
 		return nil, refuse("not valid JSON: %v", err)
 	}
-	// Every prompt carries the schema, so one that fills a prompt leaves no
-	// room for content.
-	if compact.Len() >= maxRelevantPromptBytes {
+	// Every prompt carries the schema and leaves room for the retry's
+	// feedback, so a schema that fills the rest leaves no room for content.
+	if compact.Len() >= maxRelevantPromptBytes-schemaFeedbackBytes {
 		return nil, refuse("the schema is %d bytes or more; it must fit in one %d-byte prompt with room for content", compact.Len(), maxRelevantPromptBytes)
 	}
 	var root any
@@ -170,13 +267,17 @@ func checkLocalRef(key string, val any) error {
 // checkSchemaRun loads --schema when it was given and refuses it with a
 // directory --path: a directory's files each answer on their own, and their
 // answers have no rule to merge by. It sets relevantSchema, or clears it
-// when there is no --schema.
+// when there is no --schema, and relevantResolved with it.
 func checkSchemaRun(given bool, targetPath string) error {
-	relevantSchema = nil
+	relevantSchema, relevantResolved = nil, nil
 	if !given {
 		return nil
 	}
 	schema, err := loadSchema(extractRelevantSchema)
+	if err != nil {
+		return err
+	}
+	resolved, err := resolveSchema(schema)
 	if err != nil {
 		return err
 	}
@@ -185,7 +286,7 @@ func checkSchemaRun(given bool, targetPath string) error {
 			return output.UsageError(errors.New("--schema cannot be used with a directory --path; name one file or URL"))
 		}
 	}
-	relevantSchema = schema
+	relevantSchema, relevantResolved = schema, resolved
 	return nil
 }
 

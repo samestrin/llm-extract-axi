@@ -137,6 +137,28 @@ func TestSchemaInvalidTwiceFailsWithInvalidOutput(t *testing.T) {
 	}
 }
 
+// Defends a retry call that fails: the run fails naming the retry, and the
+// first, invalid answer is not returned as data.
+func TestSchemaRetryCallFailureFailsTheRun(t *testing.T) {
+	m := newSchemaModel(t, priceInvalid)
+	m.failWhen = func(req schemaRequest) bool {
+		return strings.Contains(req.message("user"), relevantSchemaRetryLead)
+	}
+	file := writeTemp(t, "page.txt", "The widget costs 3 dollars.")
+
+	code, out, _ := runCLI(t, "extract-relevant", "--path", file, "--context", "price", "--schema", priceSchema, "--json")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	got := schemaRunResult(t, out)
+	if !strings.Contains(got.Error, "retry") || !strings.Contains(got.Error, "500") {
+		t.Errorf("error = %q, want it to name the failed retry and its 500", got.Error)
+	}
+	if len(got.ExtractedParts) != 0 {
+		t.Errorf("extracted_parts = %q: the invalid first answer was returned as data", got.ExtractedParts)
+	}
+}
+
 // Defends an answer that is not JSON at all, such as prose or NONE: it is
 // invalid too, retried with a message saying so, never read as "nothing
 // relevant".
@@ -171,7 +193,7 @@ func TestSchemaNotJSONAnswerIsRetried(t *testing.T) {
 	}
 }
 
-// Defends the other formats: text and minimal output carry the invalid
+// Defends the other formats: text, TOON and minimal output carry the invalid
 // output too, so no format loses what --json carries.
 func TestSchemaInvalidTwiceInEveryFormat(t *testing.T) {
 	cases := []struct {
@@ -179,8 +201,9 @@ func TestSchemaInvalidTwiceInEveryFormat(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"text", nil, []string{"ERROR:", "INVALID OUTPUT:", priceInvalid}},
-		{"minimal", []string{"--min"}, []string{`"io"`, `"mc":2`}},
+		{"text", []string{"--plain"}, []string{"ERROR:", "INVALID OUTPUT:", priceInvalid}},
+		{"toon", nil, []string{"invalid_output: ", "model_calls: 2"}},
+		{"minimal", []string{"--min"}, []string{"io: ", "mc: 2"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

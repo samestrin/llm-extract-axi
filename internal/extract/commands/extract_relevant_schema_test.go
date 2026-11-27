@@ -41,6 +41,8 @@ type schemaModel struct {
 	rejectAll    bool
 	answer       string
 	respond      func(req schemaRequest) string
+	// failWhen, when set, answers 500 to the requests it picks.
+	failWhen func(req schemaRequest) bool
 }
 
 func newSchemaModel(t *testing.T, answer string) *schemaModel {
@@ -55,7 +57,12 @@ func newSchemaModel(t *testing.T, answer string) *schemaModel {
 		if m.respond != nil {
 			answer = m.respond(req)
 		}
+		fail := m.failWhen != nil && m.failWhen(req)
 		m.mu.Unlock()
+		if fail {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if m.rejectAll || (m.rejectFormat && len(req.ResponseFormat) > 0) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"message":"response_format is not supported"}}`))
