@@ -71,8 +71,9 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
-	// ModelCalls counts the model calls sent, one per chunk read plus any
-	// reduce, failed calls included; BytesSent is the sum of their prompts.
+	// ModelCalls counts the model requests sent, one per chunk read plus any
+	// reduce, failed calls and retries included; BytesSent is the sum of their
+	// prompts.
 	ModelCalls *int64 `json:"model_calls,omitempty"`
 	MC         *int64 `json:"mc,omitempty"`
 	// Truncated says the model read a cut-down input: a prompt longer than
@@ -156,7 +157,7 @@ Large inputs are read in chunks: each chunk plus the context header fits
 one 30,000-byte prompt, and --max-chunks (default 8) bounds how many
 chunks of each input are sent, one model call per chunk. Chunks past the
 bound are not read; the result says so in a truncated note, and
-model_calls counts the requests sent, failed ones included. Raise --max-chunks to
+model_calls counts the requests sent, failed ones and retries included. Raise --max-chunks to
 read more of a large input; each extra chunk costs one more model call.
 
 Examples:
@@ -869,31 +870,24 @@ Rules:
 }
 
 // sendRelevantPrompt makes one extract-relevant model call, map or reduce,
-// under the per-call timeout, and counts it in model_calls and bytes_sent
-// once the request has been sent, whether or not it answered.
+// under the per-call timeout, and counts each request it sends in model_calls
+// and bytes_sent, whether or not it answered.
 func sendRelevantPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	// A request written to the endpoint reached the model and may cost, even
-	// when it fails with a status or times out; one that never connected did
-	// not, so a model that was never reached is not reported as used.
-	var sent atomic.Bool
+	// when it fails with a status or times out, and a retry sends the prompt
+	// again; one that never connected did not, so a model that was never
+	// reached is not reported as used.
 	callCtx = httptrace.WithClientTrace(callCtx, &httptrace.ClientTrace{
 		WroteRequest: func(info httptrace.WroteRequestInfo) {
 			if info.Err == nil {
-				sent.Store(true)
+				llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+				llmCalls.Add(1)
 			}
 		},
 	})
-	answer, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
-	if err == nil || sent.Load() {
-		llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
-		llmCalls.Add(1)
-	}
-	if err != nil {
-		return "", err
-	}
-	return answer, nil
+	return client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
 }
 
 func shouldExcludeDir(name string) bool {
