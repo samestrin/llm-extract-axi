@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `fetch --full` with `--output` is a usage error (exit 2) naming both flags, before the request: `--output` saves the whole body and leaves `body` out of the envelope, so `--full` was silently ignored. The MCP `fetch` tool's `full` and `output` descriptions say so.
 - `extract-relevant --path` naming a FIFO or a device (`/dev/zero`, or a link to one) is an error instead of a run that hung or read without end; a named file is read only as far as the model's input bound (since epic 12, `--max-chunks` chunks).
 - `extract-relevant -o` and `fetch --output` refuse (exit 2) a path that exists and is not a regular file: a FIFO blocked the run before it started. `/dev/null` is refused too.
 - README "Limits" says a hard link inside `--path` to a file outside it is read: no path check can tell it from the file's own name.

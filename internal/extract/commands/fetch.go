@@ -162,7 +162,7 @@ never printed: body is empty and truncated is true; save it with --output.
   --output   save the whole body to a file; the document leaves body out,
              and --plain prints one line instead of the body:
              Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>
-             --head cannot be used with --output
+             --head and --full cannot be used with --output
   --format   raw (the default, the body as received) or markdown (the main
              content of an HTML page as Markdown, made without a model)
   --fields   print only these envelope fields, comma-separated: url,
@@ -220,7 +220,7 @@ Examples:
 	cmd.Flags().IntVar(&fetchMaxBytes, "max-bytes", fetch.DefaultMaxBodyBytes, "Maximum response body size in bytes; a larger body is an error")
 	cmd.Flags().BoolVar(&fetchJSON, "json", false, "Output as JSON")
 	cmd.Flags().IntVar(&fetchHead, "head", defaultHead, "Print the first N bytes of the body, cut on a character boundary")
-	cmd.Flags().BoolVar(&fetchFull, "full", false, "Print the whole body; cannot be used with --head")
+	cmd.Flags().BoolVar(&fetchFull, "full", false, "Print the whole body; cannot be used with --head or --output")
 	cmd.Flags().StringVar(&fetchFields, "fields", "", "Comma-separated envelope fields to print: url,final_url,status,tier,format,content_type,bytes,source_bytes,truncated,title,byline,output,body,help (default all)")
 	return cmd
 }
@@ -237,6 +237,11 @@ func runFetch(cmd *cobra.Command, args []string) error {
 	// --output saves the whole body, so a cut there would be silently ignored.
 	if fetchOutput != "" && cmd.Flags().Changed("head") {
 		return fmt.Errorf("invalid argument %q for \"--head\" flag: --head and --output cannot be used together: --output saves the whole body", fmt.Sprint(fetchHead))
+	}
+	// The envelope leaves body out under --output, so --full printed nothing
+	// more and was silently ignored.
+	if fetchOutput != "" && fetchFull {
+		return fmt.Errorf("invalid argument \"true\" for \"--full\" flag: --full and --output cannot be used together: --output saves the whole body")
 	}
 	// A bad number is refused, never swapped for the default: --max-bytes 0
 	// used to mean 16 MiB and --timeout -1 thirty seconds.
