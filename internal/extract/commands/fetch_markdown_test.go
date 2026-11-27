@@ -277,6 +277,58 @@ func TestFetchMarkdownNoMainContentIsError(t *testing.T) {
 	}
 }
 
+// Defends epic 14 T1: a page whose Markdown conversion yields no text is
+// ErrNoMainContent (exit 1 with the reason and help[]), never an empty
+// success. The page below passes readable.Extract -- a video embed's
+// fallback text reads as main content -- but the Markdown converter drops
+// the iframe whole, leaving "". Without the guard after art.Markdown() this
+// exits 0 with an empty body.
+func TestFetchMarkdownEmptyConversionIsError(t *testing.T) {
+	t.Setenv("FETCH_MAX_RETRIES", "0")
+	fallback := strings.Repeat("This is a long sentence of text that reads like an article body, with commas. ", 30)
+	page := "<html><head><title>Video only</title></head><body><article><p>" +
+		`<iframe src="https://www.youtube.com/embed/abc123">` + fallback + "</iframe>" +
+		"</p></article></body></html>"
+	p := serveMarkdownPage(t, "text/html", []byte(page))
+
+	code, doc, out := runDoc(t, "fetch", p.url, "--format", "markdown")
+	if code != 1 || doc["error"] != true {
+		t.Fatalf("exit %d, want an exit-1 error:\n%s", code, out)
+	}
+	if !strings.Contains(fmt.Sprint(doc["message"]), "no main content") {
+		t.Errorf("message does not say no main content:\n%s", out)
+	}
+	if !strings.Contains(fmt.Sprint(doc["help"]), "without --format markdown") {
+		t.Errorf("help[] has no next step:\n%s", out)
+	}
+	if _, ok := doc["body"]; ok {
+		t.Errorf("an empty conversion printed a body:\n%s", out)
+	}
+	if n := p.hits.Load(); n != 1 {
+		t.Errorf("%d requests, want exactly 1", n)
+	}
+
+	// --json agrees with TOON: an error, not an empty body.
+	code, stdout, stderr := runCLI(t, "fetch", p.url, "--format", "markdown", "--json")
+	if code != 1 {
+		t.Fatalf("--json exit %d; stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	jdoc := decodeFetchDoc(t, stdout, true)
+	if jdoc["error"] != true || !strings.Contains(fmt.Sprint(jdoc["message"]), "no main content") {
+		t.Errorf("--json error does not say no main content:\n%s", stdout)
+	}
+
+	// No --output file is left for a conversion with no text.
+	file := filepath.Join(t.TempDir(), "page.md")
+	code, stdout, errOut := runFetchCmd(t, p.url, "--format", "markdown", "--output", file)
+	if code != 1 || !fetchError(stdout, errOut) {
+		t.Errorf("--plain --output: exit %d stdout=%q stderr=%q", code, stdout, errOut)
+	}
+	if _, err := os.Stat(file); err == nil {
+		t.Errorf("an --output file was written for an empty Markdown conversion")
+	}
+}
+
 // Defends decision Q4: --output saves the whole Markdown and reports its size
 // in bytes, under the envelope and under --plain's Saved line; --plain alone
 // prints the Markdown bytes under the same cut as the envelope.
