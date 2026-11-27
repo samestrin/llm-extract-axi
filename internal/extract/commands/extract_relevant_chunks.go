@@ -28,6 +28,14 @@ func relevantPromptHeader(contextText string) string {
 	return fmt.Sprintf("Context: %s\n\n---\n\nContent to extract from:\n\n", contextText)
 }
 
+// relevantReduceHeader is the prefix of the reduce prompt, before the parts.
+func relevantReduceHeader(contextText string) string {
+	return fmt.Sprintf("Context: %s\n\n---\n\nExtracted parts to merge, in document order:\n\n", contextText)
+}
+
+// relevantReduceSeparator divides the parts in the reduce prompt.
+const relevantReduceSeparator = "\n\n---\n\n"
+
 // chunkContent splits content into deterministic chunks of at most
 // maxRelevantPromptBytes-headerBytes bytes each, so every chunk plus the
 // header extractRelevantContent builds fits the whole-prompt cap and no
