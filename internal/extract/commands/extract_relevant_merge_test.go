@@ -85,6 +85,19 @@ func TestSchemaMergeListsDifferingValuesAsConflicts(t *testing.T) {
 	}
 }
 
+// Defends exact comparison: two integers a float64 cannot tell apart are
+// still different values, so their conflict is listed, not hidden.
+func TestSchemaMergeComparesLargeNumbersExactly(t *testing.T) {
+	merged, conflicts := mergeOf(t, `{"id":9007199254740993}`, `{"id":9007199254740992}`)
+	assertMerged(t, merged, `{"id":9007199254740993}`)
+	if !strings.Contains(merged, "9007199254740993") {
+		t.Errorf("merged = %s, want the id as written", merged)
+	}
+	if len(conflicts) != 1 {
+		t.Errorf("conflicts = %+v, want the differing id listed", conflicts)
+	}
+}
+
 // Defends a property whose chunks disagree on kind: an array beside a
 // scalar cannot be joined, so the first non-null is kept and the other is a
 // conflict, not a concatenation of unlike values.
@@ -102,6 +115,8 @@ func TestSchemaMergeMixedKindsIsAConflict(t *testing.T) {
 func TestSchemaMergeNonObjectRootUsesTheSameRules(t *testing.T) {
 	merged, _ := mergeOf(t, `["a"]`, `["b"]`)
 	assertMerged(t, merged, `["a","b"]`)
+	merged, _ = mergeOf(t, `null`, `null`)
+	assertMerged(t, merged, `null`)
 	merged, conflicts := mergeOf(t, `null`, `"x"`, `"y"`)
 	assertMerged(t, merged, `"x"`)
 	if len(conflicts) != 1 || conflicts[0].Property != "" || conflicts[0].KeptChunk != 2 {
@@ -182,6 +197,19 @@ func TestSchemaChunkedRunMergesAndReportsConflicts(t *testing.T) {
 	if got.ModelCalls == nil || *got.ModelCalls != int64(len(sent)) {
 		t.Errorf("model_calls = %v, want %d (no reduce call)", got.ModelCalls, len(sent))
 	}
+
+	// Every format carries the conflict: --min as cf, --plain as a line.
+	_, out, _ = runCLI(t, "extract-relevant", "--path", file, "--context", "names", "--schema", namesSchema, "--json", "--min")
+	var short struct {
+		CF []schemaConflict `json:"cf"`
+	}
+	if err := json.Unmarshal([]byte(out), &short); err != nil || len(short.CF) != 1 || short.CF[0].Property != "price" {
+		t.Errorf("--min cf = %+v (%v), want the price conflict:\n%s", short.CF, err, out)
+	}
+	_, out, _ = runCLI(t, "extract-relevant", "--path", file, "--context", "names", "--schema", namesSchema, "--plain")
+	if !strings.Contains(out, "CONFLICT: price: kept 3 (chunk 1); also 4 (chunk 2), 4 (chunk 3)") {
+		t.Errorf("--plain does not list the conflict:\n%s", out)
+	}
 }
 
 // Defends the second validation: chunks that each fit maxItems can join to
@@ -192,14 +220,18 @@ func TestSchemaMergeThatBreaksMaxItemsFails(t *testing.T) {
 	m.respond = chunkAnswer(`{"names":["a","b"]}`, `{"names":["c","d"]}`)
 	file := writeTemp(t, "big.txt", paragraphDoc(700))
 
-	for _, format := range [][]string{{"--json"}, {"--json", "--min"}, {}} {
+	for _, format := range [][]string{{"--json"}, {"--json", "--min"}, {"--plain"}, {}} {
 		code, out, _ := runCLI(t, append([]string{"extract-relevant", "--path", file, "--context", "names", "--schema", namesSchema}, format...)...)
 		if code != 1 {
 			t.Fatalf("%v: exit %d, want 1:\n%s", format, code, out)
 		}
-		if len(format) == 0 {
-			if !strings.Contains(out, "INVALID OUTPUT:") || !strings.Contains(out, `"c","d"`) {
-				t.Errorf("text output does not carry the merged invalid output:\n%s", out)
+		if len(format) == 0 || format[0] == "--plain" {
+			want := "INVALID OUTPUT: {\"names\":[\"a\",\"b\",\"c\",\"d\""
+			if len(format) == 0 {
+				want = `invalid_output: "{\"names\":[\"a\",\"b\",\"c\",\"d\"`
+			}
+			if !strings.Contains(out, want) || !strings.Contains(out, "merged answer") {
+				t.Errorf("%v output does not carry the merged invalid output %s:\n%s", format, want, out)
 			}
 			continue
 		}

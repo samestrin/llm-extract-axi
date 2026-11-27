@@ -113,9 +113,11 @@ type chunkedRead struct {
 	// err names every failed chunk, or the failed reduce call; the parts of
 	// the chunks that answered are kept beside it.
 	err error
-	// reduceNote says the parts were left unreduced, and why; "" when they
-	// were merged or there was nothing to merge.
+	// reduceNote says the parts were left unreduced, and why, or that a
+	// --schema merge found conflicts; "" otherwise.
 	reduceNote string
+	// conflicts are the differing values a --schema merge did not keep.
+	conflicts []schemaConflict
 }
 
 // truncation is the note for an input whose chunks past --max-chunks were
@@ -223,9 +225,9 @@ func reduceParts(ctx context.Context, client *llmapi.LLMClient, r *chunkedRead, 
 		return
 	}
 	// The reduce merges prose; under --schema it would turn JSON answers
-	// back into prose, so each chunk's answer is returned as it came.
+	// back into prose, so the answers are merged in code instead.
 	if relevantSchema != nil {
-		r.reduceNote = fmt.Sprintf("the %d chunk answers to --schema are returned in document order, not merged into one", len(r.parts))
+		mergeSchemaRead(r)
 		return
 	}
 	prompt := relevantReduceHeader(contextText) + strings.Join(r.parts, relevantReduceSeparator)

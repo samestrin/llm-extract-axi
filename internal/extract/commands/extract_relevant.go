@@ -89,6 +89,10 @@ type ExtractRelevantResult struct {
 	// For a chunked input it is the first such chunk's answer.
 	InvalidOutput string `json:"invalid_output,omitempty"`
 	IO            string `json:"io,omitempty"`
+	// Conflicts lists, for a chunked --schema input, each property whose
+	// chunks gave differing values: the value kept and the others.
+	Conflicts []schemaConflict `json:"conflicts,omitempty"`
+	CF        []schemaConflict `json:"cf,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 
@@ -411,6 +415,7 @@ func keepChunkedRead(read chunkedRead, result *ExtractRelevantResult) error {
 	if read.reduceNote != "" {
 		result.reduceNotes = append(result.reduceNotes, read.reduceNote)
 	}
+	result.Conflicts = append(result.Conflicts, read.conflicts...)
 	result.TotalFiles = 1
 	if read.err != nil {
 		return read.err
@@ -1016,6 +1021,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			Tr:   result.Truncated,
 			SK:   result.Skipped,
 			IO:   result.InvalidOutput,
+			CF:   result.Conflicts,
 			Help: result.Help,
 		}
 	} else {
@@ -1120,6 +1126,9 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	}
 	if len(result.Skipped) > 0 {
 		lead += "SKIPPED: " + skippedSummary(result.Skipped) + "\n"
+	}
+	for _, c := range result.Conflicts {
+		lead += "CONFLICT: " + conflictSummary(c) + "\n"
 	}
 	// The empty-result message is printed below on its own; any other
 	// message sits beside parts and leads them.
