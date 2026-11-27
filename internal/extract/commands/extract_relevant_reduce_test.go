@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -320,5 +321,26 @@ func TestExtractRelevantReduceAnsweringNoneKeepsTheParts(t *testing.T) {
 	}
 	if !strings.Contains(got.Message, "unreduced") || got.Message == noRelevantMessage {
 		t.Errorf("message = %q, want it to say the parts are unreduced", got.Message)
+	}
+}
+
+// Defends a cancelled run waiting for a --concurrency slot: the reduce is
+// never sent, the error names the reduce, and the parts are kept unreduced,
+// never dropped or reported as merged.
+func TestExtractRelevantReduceCancelledWhileWaitingKeepsTheParts(t *testing.T) {
+	saved := relevantCallSlots
+	t.Cleanup(func() { relevantCallSlots = saved })
+	relevantCallSlots = make(chan struct{}, 1)
+	relevantCallSlots <- struct{}{} // every slot is taken
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	r := chunkedRead{parts: []string{"one", "two"}, read: 2, total: 2}
+	reduceParts(ctx, nil, &r, "c")
+	if r.err == nil || !strings.Contains(r.err.Error(), "reduce") || !strings.Contains(r.err.Error(), context.Canceled.Error()) {
+		t.Errorf("err = %v, want it to name the reduce and the cancel", r.err)
+	}
+	if strings.Join(r.parts, "|") != "one|two" {
+		t.Errorf("parts = %v, want both kept unreduced", r.parts)
 	}
 }
