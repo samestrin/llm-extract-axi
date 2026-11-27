@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -284,6 +285,73 @@ func TestDocsDescribeFetchMarkdown(t *testing.T) {
 			if strings.Contains(s, stale) {
 				t.Errorf("%s claims %q, but --format takes raw or markdown", path, stale)
 			}
+		}
+	}
+}
+
+// TestDocsMatchMinimalErrorKeys defends epic 14's minimal error shape: under
+// --json --min an error is one line with the abbreviated keys err and msg and
+// no n, while TOON keeps error and message. The probes run first, so docs
+// fails only while the code agrees with the contract it must state.
+func TestDocsMatchMinimalErrorKeys(t *testing.T) {
+	code, out, errb := runCLI(t, "extract-links", "--json", "--min", "--bogus")
+	if code != 2 || errb != "" {
+		t.Fatalf("extract-links --json --min --bogus exited %d (stderr %q), want 2 with empty stderr", code, errb)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("minimal JSON error is not one JSON document: %v\n%s", err, out)
+	}
+	if doc["err"] != true || doc["msg"] == "" {
+		t.Fatalf("minimal JSON error has no err/msg; the probe, not the docs, is wrong:\n%s", out)
+	}
+	for _, k := range []string{"error", "message", "n"} {
+		if _, ok := doc[k]; ok {
+			t.Fatalf("minimal JSON error carries the key %q; the probe, not the docs, is wrong:\n%s", k, out)
+		}
+	}
+	_, toon, _ := runCLI(t, "extract-links", "--bogus")
+	if !strings.Contains(toon, "error: true") || !strings.Contains(toon, "message:") {
+		t.Fatalf("TOON error lost its full keys; the probe, not the docs, is wrong:\n%s", toon)
+	}
+
+	docs := readRepoFile(t, "docs/output.md")
+	for _, want := range []string{"`err`", "`msg`"} {
+		if !strings.Contains(docs, want) {
+			t.Errorf("docs/output.md never names %s, so a --min JSON caller cannot learn the error keys from it", want)
+		}
+	}
+	if strings.Contains(docs, "`--json`: one `{\"error\": true, \"message\": ...}` document.") &&
+		!strings.Contains(docs, "With `--min`") {
+		t.Error("docs/output.md still gives {error, message} as the only --json error shape")
+	}
+}
+
+// TestChangelogRecordsEveryEpicFix defends epic 14 T6: each of T1 to T4 has a
+// Fixed entry in Unreleased, and the file names no issue id or epic number,
+// so a reader gets the change in user terms and no internal reference.
+func TestChangelogRecordsEveryEpicFix(t *testing.T) {
+	log := readRepoFile(t, "CHANGELOG.md")
+	for _, bad := range regexp.MustCompile(`\bEST-\d+\b|\bepic [0-9]+\b`).FindAllString(log, -1) {
+		t.Errorf("CHANGELOG.md names %q; a changelog entry describes the change to a user, not the issue or epic behind it", bad)
+	}
+
+	start := strings.Index(log, "## [Unreleased]")
+	if start < 0 {
+		t.Fatal("CHANGELOG.md has no Unreleased section")
+	}
+	unreleased := log[start:]
+	if end := strings.Index(unreleased[len("## [Unreleased]"):], "\n## ["); end >= 0 {
+		unreleased = unreleased[:len("## [Unreleased]")+end]
+	}
+	for _, want := range []struct{ change, probe string }{
+		{"T1", "converts to no Markdown text"},
+		{"T2", "--full` with `--output"},
+		{"T3", "`err`"},
+		{"T4", "mailto"},
+	} {
+		if !strings.Contains(unreleased, want.probe) {
+			t.Errorf("Unreleased does not record %s (no %q), so a reader cannot learn that change from the changelog", want.change, want.probe)
 		}
 	}
 }
