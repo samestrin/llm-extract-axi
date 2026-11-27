@@ -79,6 +79,20 @@ func newMapRecorder(t *testing.T, reply func(user string) (string, int)) *mapRec
 	return rec
 }
 
+// mapCalls counts the map prompts the fake received, leaving out the reduce
+// call that follows them.
+func (rec *mapRecorder) mapCalls() int64 {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	var n int64
+	for _, p := range rec.prompts {
+		if strings.Contains(p, "Content to extract from:") {
+			n++
+		}
+	}
+	return n
+}
+
 // paragraphDoc is n 100-byte paragraphs, each led by its number, so a chunk
 // can be told by the paragraphs it holds.
 func paragraphDoc(n int) string {
@@ -158,8 +172,9 @@ func TestExtractRelevantModelCallsAndBytesSentEqualTheRealCalls(t *testing.T) {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	got := decodeExtractResult(t, out)
-	if rec.calls.Load() != int64(want) {
-		t.Fatalf("the fake saw %d calls, want %d", rec.calls.Load(), want)
+	// One call per chunk, then one reduce merging the parts.
+	if rec.calls.Load() != int64(want)+1 || rec.mapCalls() != int64(want) {
+		t.Fatalf("the fake saw %d calls (%d map), want %d map calls and the reduce", rec.calls.Load(), rec.mapCalls(), want)
 	}
 	if got.ModelCalls == nil || *got.ModelCalls != rec.answered.Load() {
 		t.Errorf("model_calls = %v, want %d", got.ModelCalls, rec.answered.Load())
@@ -167,17 +182,17 @@ func TestExtractRelevantModelCallsAndBytesSentEqualTheRealCalls(t *testing.T) {
 	if got.BytesSent == nil || *got.BytesSent != rec.bytes.Load() {
 		t.Errorf("bytes_sent = %v, want %d", got.BytesSent, rec.bytes.Load())
 	}
-	if len(got.ExtractedParts) != want {
-		t.Errorf("%d parts kept, want one per chunk (%d)", len(got.ExtractedParts), want)
+	if len(got.ExtractedParts) != 1 {
+		t.Errorf("%d parts kept, want the one merged part", len(got.ExtractedParts))
 	}
 
 	_, out, _ = runCLI(t, "extract-relevant", "--path", path, "--context", "c", "--min")
-	if !strings.Contains(out, fmt.Sprintf("mc: %d", want)) {
-		t.Errorf("--min does not carry mc: %d:\n%s", want, out)
+	if !strings.Contains(out, fmt.Sprintf("mc: %d", want+1)) {
+		t.Errorf("--min does not carry mc: %d:\n%s", want+1, out)
 	}
 	_, out, _ = runCLI(t, "extract-relevant", "--path", path, "--context", "c")
-	if !strings.Contains(out, fmt.Sprintf("model_calls: %d", want)) {
-		t.Errorf("TOON does not carry model_calls: %d:\n%s", want, out)
+	if !strings.Contains(out, fmt.Sprintf("model_calls: %d", want+1)) {
+		t.Errorf("TOON does not carry model_calls: %d:\n%s", want+1, out)
 	}
 }
 
@@ -199,8 +214,8 @@ func TestExtractRelevantOverMaxChunksReportsTruncated(t *testing.T) {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
 	got := decodeExtractResult(t, out)
-	if n := rec.calls.Load(); n != 2 {
-		t.Errorf("%d model calls past --max-chunks 2", n)
+	if n := rec.mapCalls(); n != 2 {
+		t.Errorf("%d map calls past --max-chunks 2", n)
 	}
 	if want := fmt.Sprintf("read 2 of %d chunks", total); !strings.Contains(got.Truncated, want) {
 		t.Errorf("truncated = %q, want it to say %q", got.Truncated, want)
@@ -278,8 +293,8 @@ func TestExtractRelevantFileOverMaxChunksReportsTruncated(t *testing.T) {
 	if want := fmt.Sprintf("read 2 of at least %d chunks", len(chunksFor(t, read, "c"))); !strings.Contains(got.Truncated, want) {
 		t.Errorf("truncated = %q, want it to say %q", got.Truncated, want)
 	}
-	if n := rec.calls.Load(); n != 2 {
-		t.Errorf("%d model calls, want 2", n)
+	if n := rec.mapCalls(); n != 2 {
+		t.Errorf("%d map calls, want 2", n)
 	}
 }
 
@@ -305,8 +320,10 @@ func TestExtractRelevantDirectoryFileOverMaxChunksReportsTruncated(t *testing.T)
 	if got.Skipped["too_large"] != 0 || got.TotalFiles != 2 || got.ProcessedFiles != 2 {
 		t.Errorf("a large text file was not read: %+v", got)
 	}
-	if n := rec.calls.Load(); n != 4 || got.ModelCalls == nil || *got.ModelCalls != 4 {
-		t.Errorf("%d calls, model_calls %v; want 3 for big.md and 1 for small.md", n, got.ModelCalls)
+	// big.md's three parts are merged by one reduce call; small.md's one
+	// part needs none.
+	if n := rec.mapCalls(); n != 4 || got.ModelCalls == nil || *got.ModelCalls != 5 {
+		t.Errorf("%d map calls, model_calls %v; want 3 map calls for big.md, 1 for small.md and big.md's reduce", n, got.ModelCalls)
 	}
 }
 

@@ -61,7 +61,8 @@ type ExtractRelevantResult struct {
 	// that found nothing prints "total":0; a failed run omits it.
 	Total *int `json:"total,omitempty"`
 	N     *int `json:"n,omitempty"`
-	// Message says outright that the run succeeded and found nothing.
+	// Message says outright that the run succeeded and found nothing, or
+	// that an input's parts were returned unreduced, and why.
 	Message string `json:"message,omitempty"`
 	Msg     string `json:"msg,omitempty"`
 	// Model and BytesSent describe the model calls made.
@@ -87,6 +88,9 @@ type ExtractRelevantResult struct {
 	// chunkCuts holds a note per input whose chunks past --max-chunks were
 	// not read; it becomes part of Truncated.
 	chunkCuts []string
+	// reduceNotes holds a note per input whose parts were left unreduced; it
+	// becomes Message.
+	reduceNotes []string
 }
 
 // noRelevantMessage is the explicit zero-result message.
@@ -289,6 +293,10 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		if total == 0 {
 			result.Message = noRelevantMessage
 		}
+		// A skipped reduce leaves parts, so it never meets the empty message.
+		if len(result.reduceNotes) > 0 {
+			result.Message = strings.Join(result.reduceNotes, "; ")
+		}
 	}
 
 	if GlobalAXIOutput {
@@ -366,12 +374,16 @@ func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath st
 	return keepChunkedRead(read, result)
 }
 
-// keepChunkedRead puts a single input's map pass into the result: the parts
-// that answered, the truncation note, and the error naming failed chunks.
+// keepChunkedRead puts a single input's map and reduce passes into the
+// result: the parts that answered, the truncation and reduce notes, and the
+// error naming failed chunks or the failed reduce.
 func keepChunkedRead(read chunkedRead, result *ExtractRelevantResult) error {
 	result.ExtractedParts = append(result.ExtractedParts, read.parts...)
 	if note := read.truncation(); note != "" {
 		result.chunkCuts = append(result.chunkCuts, note)
+	}
+	if read.reduceNote != "" {
+		result.reduceNotes = append(result.reduceNotes, read.reduceNote)
 	}
 	result.TotalFiles = 1
 	if read.err != nil {
@@ -394,7 +406,7 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 	}
 
 	// The page is whole up to the fetch cap, so its chunk total is exact.
-	return keepChunkedRead(mapChunks(cmd.Context(), client, content, extractRelevantContext, extractRelevantMaxChunks, false), result)
+	return keepChunkedRead(mapReduce(cmd.Context(), client, content, extractRelevantContext, extractRelevantMaxChunks, false), result)
 }
 
 // maxRemoteBodyBytes caps the page body extract-relevant and extract-links
@@ -757,7 +769,7 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 		}
 		// The parts of the chunks that answered are kept even when another
 		// chunk of the file failed.
-		out := dirFileRead{note: read.truncation()}
+		out := dirFileRead{note: read.truncation(), reduceNote: read.reduceNote}
 		if len(read.parts) > 0 {
 			out.text = fmt.Sprintf("## %s\n\n%s", relPath, strings.Join(read.parts, "\n\n"))
 		}
@@ -778,6 +790,9 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 			if out.note != "" {
 				result.chunkCuts = append(result.chunkCuts, relPath+": "+out.note)
 			}
+			if out.reduceNote != "" {
+				result.reduceNotes = append(result.reduceNotes, relPath+": "+out.reduceNote)
+			}
 		}
 		if r.Error != nil {
 			if failed == 0 {
@@ -796,9 +811,9 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 }
 
 // dirFileRead is what a directory run kept of one file: its parts under a
-// heading naming it, and its truncation note.
+// heading naming it, its truncation note and its reduce note.
 type dirFileRead struct {
-	text, note string
+	text, note, reduceNote string
 }
 
 // runDeadline allows timeout seconds for each of up to files x maxChunks
@@ -842,6 +857,13 @@ Rules:
 		llmPromptsCut.Add(1)
 	}
 
+	return sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout)
+}
+
+// sendRelevantPrompt makes one extract-relevant model call, map or reduce,
+// under the per-call timeout, and counts it in model_calls and bytes_sent
+// once it has answered.
+func sendRelevantPrompt(ctx context.Context, client *llmapi.LLMClient, systemPrompt, userPrompt string, timeout int) (string, error) {
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	answer, err := client.CompleteWithContext(callCtx, systemPrompt, userPrompt)
@@ -972,6 +994,9 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 		if result.Truncated != "" {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Truncated: %s\n", result.Truncated)
 		}
+		if result.Message != "" && result.Message != noRelevantMessage {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Note: %s\n", result.Message)
+		}
 		return nil
 	}
 
@@ -1020,6 +1045,11 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	}
 	if len(result.Skipped) > 0 {
 		lead += "SKIPPED: " + skippedSummary(result.Skipped) + "\n"
+	}
+	// The empty-result message is printed below on its own; any other
+	// message sits beside parts and leads them.
+	if result.Message != "" && result.Message != noRelevantMessage {
+		lead += "NOTE: " + result.Message + "\n"
 	}
 	switch {
 	case lead != "" && parts != "":
