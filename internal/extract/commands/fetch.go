@@ -392,6 +392,12 @@ func pageMarkdown(res *fetch.Result) (readable.Article, string, error) {
 	if err != nil {
 		return readable.Article{}, "", fmt.Errorf("fetch %s: %w", res.URL, err)
 	}
+	// The converter can drop everything Extract kept: a video embed's
+	// fallback text reads as main content, but the iframe is removed whole.
+	// An empty Markdown is no main content, never an empty success.
+	if strings.TrimSpace(md) == "" {
+		return readable.Article{}, "", &fetchFailure{err: fmt.Errorf("fetch %s: %w", res.URL, readable.ErrNoMainContent), status: res.Status}
+	}
 	return art, md, nil
 }
 
