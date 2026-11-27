@@ -138,7 +138,12 @@ func (r chunkedRead) truncation() string {
 // it is named in err, and the parts of the chunks that answered are kept.
 // atLeast says content stops at the read bound, not at the input's end.
 func mapChunks(ctx context.Context, client *llmapi.LLMClient, content, contextText string, maxChunks int, atLeast bool) chunkedRead {
-	chunks, err := chunkContent(content, len(relevantPromptHeader(contextText)))
+	// Under --schema each chunk leaves room for the retry's feedback.
+	headerBytes := len(relevantPromptHeader(contextText))
+	if relevantSchema != nil {
+		headerBytes += schemaFeedbackBytes
+	}
+	chunks, err := chunkContent(content, headerBytes)
 	if err != nil {
 		return chunkedRead{err: err}
 	}

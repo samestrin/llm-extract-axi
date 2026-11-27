@@ -31,15 +31,18 @@ func (r schemaRequest) message(role string) string {
 }
 
 // schemaModel stands in for the model endpoint under --schema. It records
-// every request, answers answer, and answers 400 to a request carrying
-// response_format when rejectFormat is set, or to every request when
-// rejectAll is.
+// every request, answers answer (or what respond returns, when set), and
+// answers 400 to a request carrying response_format when rejectFormat is
+// set, or to every request when rejectAll is.
 type schemaModel struct {
 	mu           sync.Mutex
 	requests     []schemaRequest
 	rejectFormat bool
 	rejectAll    bool
 	answer       string
+	respond      func(req schemaRequest) string
+	// failWhen, when set, answers 500 to the requests it picks.
+	failWhen func(req schemaRequest) bool
 }
 
 func newSchemaModel(t *testing.T, answer string) *schemaModel {
@@ -50,14 +53,23 @@ func newSchemaModel(t *testing.T, answer string) *schemaModel {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		m.mu.Lock()
 		m.requests = append(m.requests, req)
+		answer := m.answer
+		if m.respond != nil {
+			answer = m.respond(req)
+		}
+		fail := m.failWhen != nil && m.failWhen(req)
 		m.mu.Unlock()
+		if fail {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		if m.rejectAll || (m.rejectFormat && len(req.ResponseFormat) > 0) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":{"message":"response_format is not supported"}}`))
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		body, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": m.answer}}}})
+		body, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"role": "assistant", "content": answer}}}})
 		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
@@ -308,6 +320,11 @@ func TestSchemaUsageErrors(t *testing.T) {
 		{"$ref deep in $defs", `{"$defs":{"a":{"items":[{"$ref":"https://x.test/y"}]}}}`, file, "$ref"},
 		{"non-local $dynamicRef", `{"$dynamicRef":"https://x.test/y"}`, file, "$dynamicRef"},
 		{"non-string $ref", `{"$ref":5}`, file, "$ref"},
+		// A schema the validator cannot use is refused before a model call
+		// whose answer could never be checked.
+		{"bad keyword value", `{"type":5}`, file, "2020-12"},
+		{"another draft", `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object"}`, file, "2020-12"},
+		{"dangling local $ref", `{"type":"object","properties":{"a":{"$ref":"#/$defs/missing"}}}`, file, "2020-12"},
 		{"directory path", priceSchema, dir, "directory"},
 		{"schema path is a directory", dir, file, "not a regular file"},
 		{"schema fills a prompt", `{"description":"` + strings.Repeat("x", maxRelevantPromptBytes) + `"}`, file, "must fit"},
@@ -331,21 +348,25 @@ func TestSchemaUsageErrors(t *testing.T) {
 }
 
 // Defends the other side of the $ref check: schemas whose references are
-// all local, or whose "$ref" strings are data or property names, pass.
+// all local, or whose "$ref" strings are data or property names, pass. Since
+// answers are validated, each model answer here validates against its
+// schema, so one request is all the run makes.
 func TestSchemaAcceptsLocalRefsAndRefLookingData(t *testing.T) {
-	good := []string{
-		`{"$defs":{"p":{"type":"number"}},"type":"object","properties":{"price":{"$ref":"#/$defs/p"}}}`,
-		`{"type":"object","properties":{"self":{"$ref":"#"}}}`,
-		`{"$dynamicAnchor":"n","type":"object","properties":{"kids":{"type":"array","items":{"$dynamicRef":"#n"}}}}`,
+	good := []struct{ schema, answer string }{
+		{`{"$defs":{"p":{"type":"number"}},"type":"object","properties":{"price":{"$ref":"#/$defs/p"}}}`, `{"price":3}`},
+		{`{"type":"object","properties":{"self":{"$ref":"#"}}}`, `{"self":{}}`},
+		{`{"$dynamicAnchor":"n","type":"object","properties":{"kids":{"type":"array","items":{"$dynamicRef":"#n"}}}}`, `{"kids":[{}]}`},
 		// A property named $ref is a schema, not a reference.
-		`{"type":"object","properties":{"$ref":{"type":"string"}}}`,
-		// Values in enum, const, default and examples are data.
-		`{"type":"string","enum":[{"$ref":"https://x.test"}],"const":{"$ref":"http://y"},"default":{"$ref":"z.json"},"examples":[{"$ref":"file:///a"}]}`,
-		`{}`,
+		{`{"type":"object","properties":{"$ref":{"type":"string"}}}`, `{"$ref":"x"}`},
+		// Values in enum, const, default and examples are data. (The const
+		// equals the enum's one value, so the schema can be met.)
+		{`{"enum":[{"$ref":"https://x.test"}],"const":{"$ref":"https://x.test"},"default":{"$ref":"z.json"},"examples":[{"$ref":"file:///a"}]}`, `{"$ref":"https://x.test"}`},
+		{`{}`, `{}`},
 	}
-	for _, schema := range good {
+	for _, tc := range good {
+		schema := tc.schema
 		t.Run(schema, func(t *testing.T) {
-			m := newSchemaModel(t, `{}`)
+			m := newSchemaModel(t, tc.answer)
 			file := writeTemp(t, "page.txt", "content")
 			code, out, _ := runCLI(t, "extract-relevant", "--path", file, "--context", "x", "--schema", schema, "--json")
 			if code != 0 {

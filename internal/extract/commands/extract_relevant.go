@@ -84,6 +84,11 @@ type ExtractRelevantResult struct {
 	// file left out is never left out silently.
 	Skipped map[string]int `json:"skipped,omitempty"`
 	SK      map[string]int `json:"sk,omitempty"`
+	// InvalidOutput is the raw answer that still broke --schema after the
+	// one retry: the run failed, and this is what the model said, never data.
+	// For a chunked input it is the first such chunk's answer.
+	InvalidOutput string `json:"invalid_output,omitempty"`
+	IO            string `json:"io,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 
@@ -239,7 +244,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// A test may call the prompt builders directly after a run.
-	defer func() { relevantSchema = nil }()
+	defer func() { relevantSchema, relevantResolved = nil, nil }()
 
 	// Load API configuration
 	config := llmapi.GetAPIConfig()
@@ -288,6 +293,10 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		result.Error = err.Error()
+		var invalid *invalidOutputError
+		if errors.As(err, &invalid) {
+			result.InvalidOutput = invalid.output
+		}
 	}
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
@@ -877,7 +886,10 @@ Rules:
 		llmPromptsCut.Add(1)
 	}
 
-	return sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout, relevantFormat())
+	if relevantSchema != nil {
+		return sendSchemaPrompt(ctx, client, systemPrompt, userPrompt, timeout)
+	}
+	return sendRelevantPrompt(ctx, client, systemPrompt, userPrompt, timeout, nil)
 }
 
 // sendRelevantPrompt makes one extract-relevant model call, map or reduce,
@@ -1003,6 +1015,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			MC:   result.ModelCalls,
 			Tr:   result.Truncated,
 			SK:   result.Skipped,
+			IO:   result.InvalidOutput,
 			Help: result.Help,
 		}
 	} else {
@@ -1098,6 +1111,9 @@ func plainExtractResult(result ExtractRelevantResult) string {
 	var lead string
 	if result.Error != "" {
 		lead = fmt.Sprintf("ERROR: %s\n", result.Error)
+	}
+	if result.InvalidOutput != "" {
+		lead += fmt.Sprintf("INVALID OUTPUT: %s\n", result.InvalidOutput)
 	}
 	if result.Truncated != "" {
 		lead += fmt.Sprintf("TRUNCATED: %s\n", result.Truncated)
