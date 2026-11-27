@@ -208,8 +208,9 @@ func TestExtractRelevantFailedReduceKeepsThePartsAndExits1(t *testing.T) {
 	if n := rec.calls.Load(); n != int64(len(chunks)+1) {
 		t.Errorf("%d calls, want %d map calls and one reduce", n, len(chunks))
 	}
-	if got.ModelCalls == nil || *got.ModelCalls != int64(len(chunks)) {
-		t.Errorf("model_calls = %v, want the %d calls that answered", got.ModelCalls, len(chunks))
+	// The failed reduce reached the model, so it is counted (epic 12 AC2).
+	if got.ModelCalls == nil || *got.ModelCalls != int64(len(chunks)+1) {
+		t.Errorf("model_calls = %v, want the %d map calls and the failed reduce", got.ModelCalls, len(chunks))
 	}
 	if got.Total != nil || got.Message != "" {
 		t.Errorf("a failed run reports a total or a message: %+v", got)
