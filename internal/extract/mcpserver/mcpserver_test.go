@@ -73,6 +73,12 @@ func TestBuildMapsArguments(t *testing.T) {
 			[]string{"extract-links", "--url", "http://x", "--context", "c", "--timeout", "3"}},
 		{"extract_relevant", `{"path":"p","context":"c","concurrency":4}`,
 			[]string{"extract-relevant", "--path", "p", "--context", "c", "--concurrency", "4"}},
+		// Epic 13 T5: schema passes through unchanged, inline JSON or file
+		// path; the CLI decides which it is and validates it.
+		{"extract_relevant", `{"path":"p","context":"c","schema":"{\"type\":\"object\"}"}`,
+			[]string{"extract-relevant", "--path", "p", "--context", "c", "--schema", `{"type":"object"}`}},
+		{"extract_relevant", `{"path":"p","context":"c","schema":"schema.json"}`,
+			[]string{"extract-relevant", "--path", "p", "--context", "c", "--schema", "schema.json"}},
 	}
 	for _, c := range cases {
 		var a args
@@ -115,6 +121,49 @@ func TestFetchToolOffersOutputAndFields(t *testing.T) {
 		return
 	}
 	t.Fatal("no fetch tool")
+}
+
+// Defends Epic 13 T5: a call with schema must run the CLI with
+// --schema <value>; a server that drops the argument would silently return
+// free text where the caller asked for schema-shaped JSON.
+func TestExtractRelevantForwardsSchema(t *testing.T) {
+	bin := fakeCLI(t, `echo "$@"`)
+	r := Run(context.Background(), bin, "extract_relevant",
+		json.RawMessage(`{"path":"p","context":"c","schema":"{\"type\":\"object\"}"}`))
+	if r.IsError {
+		t.Fatalf("unexpected error: %s", text(t, r.Content))
+	}
+	if got := r.Content[0].(*mcp.TextContent).Text; !strings.Contains(got, `--schema {"type":"object"}`) {
+		t.Errorf("CLI did not receive --schema <value>, got: %q", got)
+	}
+
+	// No schema argument means no --schema flag: the CLI default stands.
+	r = Run(context.Background(), bin, "extract_relevant", json.RawMessage(`{"path":"p","context":"c"}`))
+	if r.IsError {
+		t.Fatalf("unexpected error: %s", text(t, r.Content))
+	}
+	if got := r.Content[0].(*mcp.TextContent).Text; strings.Contains(got, "--schema") {
+		t.Errorf("absent schema added a flag: %q", got)
+	}
+}
+
+// Defends Epic 13 T5: the tool must advertise the schema argument, or an MCP
+// caller has no way to ask for structured output the CLI supports.
+func TestExtractRelevantOffersSchema(t *testing.T) {
+	for _, tl := range tools {
+		if tl.name != "extract_relevant" {
+			continue
+		}
+		props, _ := tl.schema["properties"].(map[string]any)
+		if _, ok := props["schema"]; !ok {
+			t.Error("extract_relevant tool has no \"schema\" argument")
+		}
+		if !strings.Contains(tl.description, "schema") {
+			t.Errorf("extract_relevant description does not mention schema: %q", tl.description)
+		}
+		return
+	}
+	t.Fatal("no extract_relevant tool")
 }
 
 // Defends against running the CLI with a missing required argument.
