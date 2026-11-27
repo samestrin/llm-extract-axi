@@ -383,20 +383,26 @@ func TestExtractRelevantFailedChunkKeepsTheGoodPartsAndExits1(t *testing.T) {
 func TestExtractRelevantFailedCallsAreCountedInModelCallsAndBytesSent(t *testing.T) {
 	doc := paragraphDoc(1000) // four chunks
 	chunks := chunksFor(t, doc, "c")
+	failedChunk := func(user string) bool {
+		return !isReducePrompt(user) && firstParagraph(chunkBody(user)) == firstParagraph(chunks[1])
+	}
+	// A 500 or 429 is retried, so the model receives the same prompt again;
+	// each attempt is a request and is counted.
 	cases := []struct {
-		name  string
-		fails func(user string) bool
+		name   string
+		fails  func(user string) bool
+		status int
 	}{
-		{"failed chunk", func(user string) bool {
-			return !isReducePrompt(user) && firstParagraph(chunkBody(user)) == firstParagraph(chunks[1])
-		}},
-		{"failed reduce", isReducePrompt},
+		{"failed chunk", failedChunk, http.StatusBadRequest},
+		{"failed reduce", isReducePrompt, http.StatusBadRequest},
+		{"retried 500 chunk", failedChunk, http.StatusInternalServerError},
+		{"retried 429 reduce", isReducePrompt, http.StatusTooManyRequests},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := newMapRecorder(t, func(user string) (string, int) {
 				if tc.fails(user) {
-					return "", http.StatusBadRequest
+					return "", tc.status
 				}
 				return "a part", http.StatusOK
 			})
@@ -410,6 +416,9 @@ func TestExtractRelevantFailedCallsAreCountedInModelCallsAndBytesSent(t *testing
 			got := decodeExtractResult(t, out)
 			if rec.answered.Load() == rec.calls.Load() {
 				t.Fatalf("no call failed: %d calls, all answered", rec.calls.Load())
+			}
+			if failed := rec.calls.Load() - rec.answered.Load(); tc.status != http.StatusBadRequest && failed < 2 {
+				t.Fatalf("%d failed request for a retried %d, want the retries too", failed, tc.status)
 			}
 			if got.ModelCalls == nil || *got.ModelCalls != rec.calls.Load() {
 				t.Errorf("model_calls = %v, want all %d calls the model received", got.ModelCalls, rec.calls.Load())
