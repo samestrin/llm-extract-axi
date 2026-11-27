@@ -68,6 +68,10 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
+	// ModelCalls counts the model calls that answered, one per chunk read;
+	// BytesSent is the sum of their prompts.
+	ModelCalls *int64 `json:"model_calls,omitempty"`
+	MC         *int64 `json:"mc,omitempty"`
 	// Truncated says the model read a cut-down input: a prompt longer than
 	// maxRelevantPromptBytes is cut, and the content past the cut is unread.
 	Truncated string `json:"truncated,omitempty"`
