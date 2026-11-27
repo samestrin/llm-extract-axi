@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -192,6 +195,60 @@ func TestReadmeNamesEverySetupTarget(t *testing.T) {
 		if !strings.Contains(help.String(), name) {
 			t.Errorf("setup --help does not name the %s target", name)
 		}
+	}
+}
+
+// TestDocsDescribeChunkedModelInput defends epic 12's docs truth (T4):
+// extract-relevant reads each input in chunks that each fit one prompt,
+// --max-chunks bounds the chunks sent (one model call per chunk, counted in
+// model_calls), and no doc may still claim the model reads only the first
+// 30,000 bytes of an input. The probe first proves the live behaviour — a
+// file over the bound reports unread chunks naming --max-chunks, and
+// model_calls equals the requests that actually arrived — then fails on a
+// doc that states the old cut or does not name the bound and its cost.
+func TestDocsDescribeChunkedModelInput(t *testing.T) {
+	var calls atomic.Int32
+	srv := fakeLLM(t, func(string) string { calls.Add(1); return "kept" })
+	pointExtractRelevantAt(t, srv)
+	big := filepath.Join(t.TempDir(), "big.md")
+	if err := os.WriteFile(big, []byte(strings.Repeat("x", 40000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ := runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "--json")
+	var r ExtractRelevantResult
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatal(err)
+	}
+	if code != 0 || !strings.Contains(r.Truncated, "--max-chunks") || r.ModelCalls == nil || *r.ModelCalls != int64(calls.Load()) {
+		t.Fatalf("a file over --max-chunks 1 is not a truncated result whose model_calls counts the real calls; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+
+	for _, path := range []string{"README.md", "docs/output.md", "docs/axi-audit.md", "docs/axi-catalog-entry.yaml", "integrations/claude-code/skill/SKILL.md"} {
+		s := readRepoFile(t, path)
+		for _, stale := range []string{
+			"cuts each prompt",
+			"only the first 30,000 bytes",
+			"each prompt cut at 30,000 bytes",
+			"cut their model input at a fixed limit",
+			"30,000-byte input",
+		} {
+			if strings.Contains(s, stale) {
+				t.Errorf("%s claims %q, but extract-relevant reads in chunks bounded by --max-chunks, not a 30,000-byte cut", path, stale)
+			}
+		}
+		for _, want := range []string{"--max-chunks", "model_calls"} {
+			if !strings.Contains(s, want) {
+				t.Errorf("%s does not name %q, so a reader cannot learn the chunk bound and its cost from it", path, want)
+			}
+		}
+	}
+
+	var help, helpErr bytes.Buffer
+	if code := run([]string{"extract-relevant", "--help"}, &help, &helpErr); code != 0 {
+		t.Fatalf("extract-relevant --help exited %d: %s", code, helpErr.String())
+	}
+	if !strings.Contains(help.String(), "chunk") {
+		t.Error("extract-relevant --help does not say the input is read in chunks")
 	}
 }
 
