@@ -28,8 +28,9 @@ type Article struct {
 	Title  string
 	Byline string
 	// HTML is the cleaned main content as an HTML fragment. Links are
-	// resolved against the final page URL (or the document's base URL), and
-	// javascript: and data: targets are removed while their text is kept.
+	// resolved against the final page URL (or the document's base URL). Only
+	// http, https, mailto and tel targets keep a link; any other scheme is
+	// removed while its text is kept.
 	HTML string
 }
 
