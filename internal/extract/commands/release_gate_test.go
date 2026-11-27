@@ -141,9 +141,10 @@ func TestDocsDoNotClaimErrorAndTotalNeverMix(t *testing.T) {
 	}
 }
 
-// Defends finding 5: extract-relevant cuts the model input at 30,000 bytes.
-// A result built from a cut input must say so in every mode, and an uncut one
-// must not.
+// Defends finding 5: a result built from a cut input must say so in every
+// mode, and an uncut one must not. Since epic 12 the input is chunked, not
+// cut at 30,000 bytes; what is left unread is the chunks past --max-chunks,
+// so the 40,000-byte file is read with --max-chunks 1.
 func TestExtractRelevantReportsTruncatedInput(t *testing.T) {
 	axiOffAfter(t)
 	pointExtractRelevantAt(t, fakeLLM(t, func(string) string { return "kept" }))
@@ -151,43 +152,48 @@ func TestExtractRelevantReportsTruncatedInput(t *testing.T) {
 	if err := os.WriteFile(big, []byte(strings.Repeat("x", 40000)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, out, _ := runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--json")
+	_, out, _ := runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "--json")
 	var r ExtractRelevantResult
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(r.Truncated, "30000 bytes") {
+	if !strings.Contains(r.Truncated, "read 1 of at least 2 chunks") {
 		t.Errorf("--json lacks the truncation note:\n%s", out)
 	}
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--json", "--min")
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "--json", "--min")
 	if !strings.Contains(out, `"tr":`) {
 		t.Errorf("--min lacks the truncation note:\n%s", out)
 	}
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--axi")
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "--axi")
 	doc, err := goaxi.Decode(strings.NewReader(out))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, _ := doc.(map[string]any)["truncated"].(string); !strings.Contains(s, "30000 bytes") {
+	if s, _ := doc.(map[string]any)["truncated"].(string); !strings.Contains(s, "read 1 of at least 2 chunks") {
 		t.Errorf("--axi lacks the truncation note:\n%s", out)
 	}
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--plain")
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "--plain")
 	if !strings.HasPrefix(out, "TRUNCATED: ") {
 		t.Errorf("text lacks the truncation note:\n%s", out)
 	}
 	// The plain -o summary is a success report too.
-	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "-o", filepath.Join(t.TempDir(), "o.txt"), "--plain")
-	if !strings.Contains(out, "Truncated: model input cut at 30000 bytes") {
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--max-chunks", "1", "-o", filepath.Join(t.TempDir(), "o.txt"), "--plain")
+	if !strings.Contains(out, "Truncated: read 1 of at least 2 chunks") {
 		t.Errorf("-o summary lacks the truncation note:\n%s", out)
 	}
 	_, out, _ = runCLI(t, "extract-relevant", "--path", writeDoc(t), "--context", "c", "--json")
 	if strings.Contains(out, "truncated") {
 		t.Errorf("an uncut input claims truncation:\n%s", out)
 	}
+	// Under the default --max-chunks the same file is read whole.
+	_, out, _ = runCLI(t, "extract-relevant", "--path", big, "--context", "c", "--json")
+	if strings.Contains(out, "truncated") {
+		t.Errorf("an uncut input claims truncation:\n%s", out)
+	}
 }
 
 // Defends finding 5 on a partial directory run: a failed file does not hide
-// that another file's input was cut.
+// that another file's input was cut, here at --max-chunks 1.
 func TestExtractRelevantPartialDirectoryReportsTruncation(t *testing.T) {
 	ok := fakeLLM(t, func(string) string { return "kept" })
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +216,7 @@ func TestExtractRelevantPartialDirectoryReportsTruncation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "small.md"), []byte("FAILME"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, out, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "c", "--json")
+	code, out, _ := runCLI(t, "extract-relevant", "--path", dir, "--context", "c", "--max-chunks", "1", "--json")
 	var r ExtractRelevantResult
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		t.Fatal(err)
@@ -218,7 +224,7 @@ func TestExtractRelevantPartialDirectoryReportsTruncation(t *testing.T) {
 	if code != 1 || r.Error == "" || len(r.ExtractedParts) != 1 {
 		t.Fatalf("want a partial run, got exit %d: %s", code, out)
 	}
-	if !strings.Contains(r.Truncated, "1 of 2") {
+	if !strings.Contains(r.Truncated, "big.md: read 1 of at least 2 chunks") {
 		t.Errorf("directory run lacks the per-input count: %q", r.Truncated)
 	}
 }

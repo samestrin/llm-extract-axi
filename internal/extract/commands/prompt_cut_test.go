@@ -64,7 +64,10 @@ func checkCutPrompt(t *testing.T, prompt string, limit int, note string) {
 // Defends against extract-relevant cutting its prompt inside a multi-byte
 // character: the byte-offset cut sent the model a broken character. Every
 // padding is tried, so for both a 3- and a 4-byte character some run puts
-// the 30000th byte mid-character. The cut must still be reported.
+// the 30000th byte mid-character. Since epic 12 the input is chunked rather
+// than cut, so this checks the CLI end of that: every prompt sent is whole
+// characters and within the cap, none carries the cut note, nothing reports
+// truncated, and every chunk was sent.
 func TestExtractRelevantCutsPromptOnARuneBoundary(t *testing.T) {
 	for _, ch := range []string{"€", "😀"} {
 		for pad := 0; pad < len(ch); pad++ {
@@ -84,14 +87,25 @@ func TestExtractRelevantCutsPromptOnARuneBoundary(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &got); err != nil {
 				t.Fatalf("output is not JSON: %v\n%s", err, out)
 			}
-			if got.Truncated == "" {
-				t.Errorf("%q pad %d: the cut is not reported in truncated", ch, pad)
+			if got.Truncated != "" {
+				t.Errorf("%q pad %d: a chunked input reports truncated: %q", ch, pad, got.Truncated)
+			}
+			chunks, err := chunkContent(content, len(relevantPromptHeader("c")))
+			if err != nil {
+				t.Fatal(err)
 			}
 			sent := prompts()
-			if len(sent) != 1 {
-				t.Fatalf("%q pad %d: %d model calls, want 1", ch, pad, len(sent))
+			if len(sent) != len(chunks) {
+				t.Fatalf("%q pad %d: %d model calls, want one per chunk (%d)", ch, pad, len(sent), len(chunks))
 			}
-			checkCutPrompt(t, sent[0], maxRelevantPromptBytes, "\n\n[Content truncated due to length]")
+			for i, p := range sent {
+				if !utf8.ValidString(p) || strings.ContainsRune(p, utf8.RuneError) {
+					t.Errorf("%q pad %d: prompt %d splits a character", ch, pad, i)
+				}
+				if len(p) > maxRelevantPromptBytes || strings.Contains(p, "[Content truncated due to length]") {
+					t.Errorf("%q pad %d: prompt %d is %d bytes or was cut", ch, pad, i, len(p))
+				}
+			}
 		}
 	}
 }

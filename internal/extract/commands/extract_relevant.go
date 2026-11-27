@@ -32,6 +32,7 @@ var (
 	extractRelevantJSON        bool
 	extractRelevantMinimal     bool
 	extractRelevantPath        string
+	extractRelevantMaxChunks   int
 )
 
 // newLLMClient builds the model client for both commands. It is a variable so
@@ -68,6 +69,10 @@ type ExtractRelevantResult struct {
 	M         string `json:"m,omitempty"`
 	BytesSent *int64 `json:"bytes_sent,omitempty"`
 	BS        *int64 `json:"bs,omitempty"`
+	// ModelCalls counts the model calls that answered, one per chunk read;
+	// BytesSent is the sum of their prompts.
+	ModelCalls *int64 `json:"model_calls,omitempty"`
+	MC         *int64 `json:"mc,omitempty"`
 	// Truncated says the model read a cut-down input: a prompt longer than
 	// maxRelevantPromptBytes is cut, and the content past the cut is unread.
 	Truncated string `json:"truncated,omitempty"`
@@ -78,6 +83,10 @@ type ExtractRelevantResult struct {
 	SK      map[string]int `json:"sk,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
+
+	// chunkCuts holds a note per input whose chunks past --max-chunks were
+	// not read; it becomes part of Truncated.
+	chunkCuts []string
 }
 
 // noRelevantMessage is the explicit zero-result message.
@@ -92,6 +101,10 @@ var llmBytesSent atomic.Int64
 // so. Reset with llmBytesSent.
 var llmPrompts, llmPromptsCut atomic.Int64
 
+// llmCalls counts the extract-relevant model calls that answered in one run:
+// model_calls. Reset with llmBytesSent.
+var llmCalls atomic.Int64
+
 // maxRelevantPromptBytes is where extract-relevant cuts the prompt it sends
 // the model. Content past the cut is never read.
 const maxRelevantPromptBytes = 30000
@@ -101,6 +114,7 @@ func resetModelUse() {
 	llmBytesSent.Store(0)
 	llmPrompts.Store(0)
 	llmPromptsCut.Store(0)
+	llmCalls.Store(0)
 }
 
 // modelUse returns the model and byte count to report, or nothing when no
@@ -167,6 +181,7 @@ API Configuration:
 	cmd.Flags().IntVar(&extractRelevantConcurrency, "concurrency", 2, "Number of concurrent API calls for directory processing")
 	cmd.Flags().StringVarP(&extractRelevantOutput, "output", "o", "", "Output file (default: stdout)")
 	cmd.Flags().IntVar(&extractRelevantTimeout, "timeout", 60, "API call timeout in seconds")
+	cmd.Flags().IntVar(&extractRelevantMaxChunks, "max-chunks", 8, "Most chunks of each input sent to the model, one call each")
 	cmd.Flags().BoolVar(&extractRelevantJSON, "json", false, "Output as JSON")
 	cmd.Flags().BoolVar(&extractRelevantMinimal, "min", false, "Output in minimal/token-optimized format")
 
@@ -196,6 +211,9 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	if err := atLeast("concurrency", extractRelevantConcurrency, 1); err != nil {
 		return err
 	}
+	if err := atLeast("max-chunks", extractRelevantMaxChunks, 1); err != nil {
+		return err
+	}
 	if extractRelevantOutput != "" {
 		if err := checkWritable("-o", extractRelevantOutput); err != nil {
 			return err
@@ -216,6 +234,7 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 	}
 
 	resetModelUse()
+	relevantCallSlots = make(chan struct{}, extractRelevantConcurrency)
 	var err error
 
 	// Check if target is a URL
@@ -252,9 +271,18 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 
 	result.ProcessingTimeS = time.Since(startTime).Seconds()
 	result.Model, result.BytesSent = modelUse(config.Model)
-	if cut := llmPromptsCut.Load(); cut > 0 {
-		result.Truncated = fmt.Sprintf("model input cut at %d bytes for %d of %d inputs; the content past the cut was not read", maxRelevantPromptBytes, cut, llmPrompts.Load())
+	if calls := llmCalls.Load(); calls > 0 {
+		result.ModelCalls = &calls
 	}
+	var cuts []string
+	if len(result.chunkCuts) > 0 {
+		sort.Strings(result.chunkCuts)
+		cuts = append(cuts, fmt.Sprintf("%s; the content past --max-chunks %d was not read (raise --max-chunks to read more)", strings.Join(result.chunkCuts, "; "), extractRelevantMaxChunks))
+	}
+	if cut := llmPromptsCut.Load(); cut > 0 {
+		cuts = append(cuts, fmt.Sprintf("model input cut at %d bytes for %d of %d inputs; the content past the cut was not read", maxRelevantPromptBytes, cut, llmPrompts.Load()))
+	}
+	result.Truncated = strings.Join(cuts, "; ")
 	if result.Error == "" {
 		total := len(result.ExtractedParts)
 		result.Total = &total
@@ -330,24 +358,26 @@ func readCapped(path string, limit int64) ([]byte, error) {
 }
 
 func processSingleFile(cmd *cobra.Command, client *llmapi.LLMClient, filePath string, result *ExtractRelevantResult) error {
-	// The model reads no more than maxRelevantPromptBytes, so neither does
-	// this; the byte past it makes the prompt cut, and so its truncated note.
-	content, err := readCapped(filePath, maxRelevantPromptBytes)
+	// The model reads no more than --max-chunks chunks, so neither does this.
+	read, err := readChunked(cmd.Context(), client, filePath, extractRelevantContext)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
 	}
+	return keepChunkedRead(read, result)
+}
 
-	extracted, err := extractRelevantContent(cmd.Context(), client, string(content), extractRelevantContext, extractRelevantTimeout)
-	if err != nil {
-		return err
-	}
-
-	if !isNone(extracted) {
-		result.ExtractedParts = append(result.ExtractedParts, extracted)
+// keepChunkedRead puts a single input's map pass into the result: the parts
+// that answered, the truncation note, and the error naming failed chunks.
+func keepChunkedRead(read chunkedRead, result *ExtractRelevantResult) error {
+	result.ExtractedParts = append(result.ExtractedParts, read.parts...)
+	if note := read.truncation(); note != "" {
+		result.chunkCuts = append(result.chunkCuts, note)
 	}
 	result.TotalFiles = 1
+	if read.err != nil {
+		return read.err
+	}
 	result.ProcessedFiles = 1
-
 	return nil
 }
 
@@ -363,18 +393,8 @@ func processURL(cmd *cobra.Command, client *llmapi.LLMClient, url string, result
 		return fmt.Errorf("failed to fetch URL: %w", err)
 	}
 
-	extracted, err := extractRelevantContent(cmd.Context(), client, content, extractRelevantContext, extractRelevantTimeout)
-	if err != nil {
-		return err
-	}
-
-	if !isNone(extracted) {
-		result.ExtractedParts = append(result.ExtractedParts, extracted)
-	}
-	result.TotalFiles = 1
-	result.ProcessedFiles = 1
-
-	return nil
+	// The page is whole up to the fetch cap, so its chunk total is exact.
+	return keepChunkedRead(mapChunks(cmd.Context(), client, content, extractRelevantContext, extractRelevantMaxChunks, false), result)
 }
 
 // maxRemoteBodyBytes caps the page body extract-relevant and extract-links
@@ -539,17 +559,12 @@ func htmlToText(r io.Reader) (string, error) {
 	return result, nil
 }
 
-// maxDirFileBytes is the largest file a directory run reads; a larger one is
-// skipped and counted as too_large.
-const maxDirFileBytes = 100 * 1024
-
 // Reasons a directory run skips a file, as counted in the result's skipped.
 const (
 	skipDotfile     = "dotfile"
 	skipExcludedDir = "excluded_dir"
 	skipCredential  = "credential_name"
 	skipNotText     = "not_text"
-	skipTooLarge    = "too_large"
 	skipOutsidePath = "outside_path"
 	skipNotRegular  = "not_regular"
 	skipUnreadable  = "unreadable"
@@ -627,11 +642,6 @@ func collectDirFiles(root string) ([]string, map[string]int, error) {
 			skipped[skipNotRegular]++
 			return nil
 		}
-		if info.Size() > maxDirFileBytes {
-			skipped[skipTooLarge]++
-			return nil
-		}
-
 		files = append(files, path)
 		return nil
 	})
@@ -729,60 +739,80 @@ func processDirectory(cmd *cobra.Command, client *llmapi.LLMClient, dirPath stri
 	// The whole-run context is derived from the command's own context, so when
 	// the caller supplies a cancellable or deadline-bound context (an embedding
 	// caller or a test; the shipped CLI does not wire a signal handler today) a
-	// cancel at the top aborts every per-file model call too. The per-file
-	// timeout is layered on within extractRelevantContent. cobra guarantees
-	// cmd.Context() is non-nil.
-	ctx, cancel := context.WithTimeout(cmd.Context(), time.Duration(extractRelevantTimeout*len(files))*time.Second)
+	// cancel at the top aborts every chunk call too. It allows one --timeout
+	// for every call the run may make; the per-call timeout is layered on
+	// within extractRelevantContent. cobra guarantees cmd.Context() is non-nil.
+	ctx, cancel := context.WithTimeout(cmd.Context(), runDeadline(extractRelevantTimeout, len(files), extractRelevantMaxChunks))
 	defer cancel()
 
 	results := processor.ProcessItems(ctx, items, func(ctx context.Context, c *llmapi.LLMClient, item interface{}) (interface{}, error) {
 		filePath := item.(string)
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read %s: %w", filePath, err)
-		}
-
 		// Create context-aware prompt for this file
 		relPath, _ := filepath.Rel(dirPath, filePath)
 		fileContext := fmt.Sprintf("File: %s\n\nContext: %s", relPath, extractRelevantContext)
 
-		extracted, err := extractRelevantContent(ctx, c, string(content), fileContext, extractRelevantTimeout)
+		read, err := readChunked(ctx, c, filePath, fileContext)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read %s: %w", filePath, err)
 		}
-
-		if extracted == "" || strings.TrimSpace(extracted) == "NONE" {
-			return nil, nil // No relevant content
+		// The parts of the chunks that answered are kept even when another
+		// chunk of the file failed.
+		out := dirFileRead{note: read.truncation()}
+		if len(read.parts) > 0 {
+			out.text = fmt.Sprintf("## %s\n\n%s", relPath, strings.Join(read.parts, "\n\n"))
 		}
-
-		return fmt.Sprintf("## %s\n\n%s", relPath, extracted), nil
+		return out, read.err
 	})
 
-	// Collect successful results. A failed file is not dropped silently: the
-	// others are kept as a partial result and the run fails, naming the first.
+	// Collect the results. A failed file is not dropped silently: whatever it
+	// and the others answered is kept as a partial result and the run fails,
+	// naming the first.
 	var failed int
 	var firstErr string
 	for _, r := range results {
+		relPath, _ := filepath.Rel(dirPath, files[r.Index])
+		if out, ok := r.Output.(dirFileRead); ok {
+			if out.text != "" {
+				result.ExtractedParts = append(result.ExtractedParts, out.text)
+			}
+			if out.note != "" {
+				result.chunkCuts = append(result.chunkCuts, relPath+": "+out.note)
+			}
+		}
 		if r.Error != nil {
 			if failed == 0 {
-				relPath, _ := filepath.Rel(dirPath, files[r.Index])
 				firstErr = fmt.Sprintf("%s: %v", relPath, r.Error)
 			}
 			failed++
 			continue
 		}
 		result.ProcessedFiles++
-		if r.Output != nil {
-			if output := r.Output.(string); output != "" {
-				result.ExtractedParts = append(result.ExtractedParts, output)
-			}
-		}
 	}
 
 	if failed > 0 {
 		return fmt.Errorf("%d of %d files failed (first: %s)", failed, len(files), firstErr)
 	}
 	return nil
+}
+
+// dirFileRead is what a directory run kept of one file: its parts under a
+// heading naming it, and its truncation note.
+type dirFileRead struct {
+	text, note string
+}
+
+// runDeadline allows timeout seconds for each of up to files x maxChunks
+// calls, saturating instead of overflowing on a huge --max-chunks.
+func runDeadline(timeout, files, maxChunks int) time.Duration {
+	limit := time.Duration(math.MaxInt64)
+	d := time.Duration(timeout) * time.Second
+	for _, n := range []int{files, maxChunks} {
+		if d > limit/time.Duration(n) {
+			return limit
+		}
+		d *= time.Duration(n)
+	}
+	return d
 }
 
 // extractRelevantContent sends one extraction prompt and returns the model's
@@ -821,6 +851,7 @@ Rules:
 	// Counted once the call has answered, so a model that was never reached
 	// is not reported as used.
 	llmBytesSent.Add(int64(len(systemPrompt) + len(userPrompt)))
+	llmCalls.Add(1)
 	return answer, nil
 }
 
@@ -888,6 +919,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			Msg:  result.Message,
 			M:    result.Model,
 			BS:   result.BytesSent,
+			MC:   result.ModelCalls,
 			Tr:   result.Truncated,
 			SK:   result.Skipped,
 			Help: result.Help,
@@ -958,14 +990,20 @@ func extractRelevantHelp(result ExtractRelevantResult) []string {
 	if result.URL != "" {
 		field = "url"
 	}
+	var help []string
 	switch {
 	case result.Error != "":
-		return []string{"Fix the cause named in the error, then run the command again", usage}
+		help = []string{"Fix the cause named in the error, then run the command again", usage}
 	case len(result.ExtractedParts) == 0:
-		return []string{"Broaden the context: llm-extract extract-relevant --path " + pathArg(field) + " --context '<broader topic>'"}
+		help = []string{"Broaden the context: llm-extract extract-relevant --path " + pathArg(field) + " --context '<broader topic>'"}
 	default:
-		return []string{"Narrow and save it: llm-extract extract-relevant --path " + pathArg(field) + " --context '<narrower topic>' -o <file>"}
+		help = []string{"Narrow and save it: llm-extract extract-relevant --path " + pathArg(field) + " --context '<narrower topic>' -o <file>"}
 	}
+	// Chunks past --max-chunks were not read: say how to read them.
+	if len(result.chunkCuts) > 0 {
+		help = append(help, fmt.Sprintf("Read more of the input: llm-extract extract-relevant --path %s --context '<topic>' --max-chunks %d", pathArg(field), 2*extractRelevantMaxChunks))
+	}
+	return help
 }
 
 // plainExtractResult renders the text output for stdout and -o alike. An error

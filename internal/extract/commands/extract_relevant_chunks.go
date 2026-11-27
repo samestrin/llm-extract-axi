@@ -1,9 +1,15 @@
 package commands
 
 import (
+	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
+
+	"github.com/samestrin/llm-extract-axi/v2/pkg/llmapi"
 )
 
 // relevantChunkOverlapBytes is how much of the previous chunk's tail each
@@ -77,4 +83,117 @@ func chunkContent(content string, headerBytes int) ([]string, error) {
 		pos = next
 	}
 	return chunks, nil
+}
+
+// relevantCallSlots bounds the model calls in flight in one run to
+// --concurrency. A directory run's files share it, so their chunks together
+// never exceed the bound. runExtractRelevant sets it before any call.
+var relevantCallSlots chan struct{}
+
+// chunkedRead is what the map pass made of one input.
+type chunkedRead struct {
+	// parts are the answers that were not NONE, in document order.
+	parts []string
+	// read counts the chunks sent and total the chunks the input makes; when
+	// atLeast is set the input was read only to its bound, so total counts
+	// the chunks of what was read and the input makes at least that many.
+	read, total int
+	atLeast     bool
+	// err names every failed chunk; the parts of the chunks that answered
+	// are kept beside it.
+	err error
+}
+
+// truncation is the note for an input whose chunks past --max-chunks were
+// not read, or "" when every chunk was.
+func (r chunkedRead) truncation() string {
+	if r.read >= r.total {
+		return ""
+	}
+	of := ""
+	if r.atLeast {
+		of = "at least "
+	}
+	return fmt.Sprintf("read %d of %s%d chunks", r.read, of, r.total)
+}
+
+// mapChunks is the map pass over one input: content is cut into chunks under
+// the header contextText builds, the first maxChunks are each extracted with
+// the same prompt, at most --concurrency at a time across the run, and the
+// answers are kept in document order. A failed call is never read as NONE:
+// it is named in err, and the parts of the chunks that answered are kept.
+// atLeast says content stops at the read bound, not at the input's end.
+func mapChunks(ctx context.Context, client *llmapi.LLMClient, content, contextText string, maxChunks int, atLeast bool) chunkedRead {
+	chunks, err := chunkContent(content, len(relevantPromptHeader(contextText)))
+	if err != nil {
+		return chunkedRead{err: err}
+	}
+	r := chunkedRead{read: min(len(chunks), maxChunks), total: len(chunks), atLeast: atLeast}
+	answers := make([]string, r.read)
+	errs := make([]error, r.read)
+	var wg sync.WaitGroup
+	for i := range r.read {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case relevantCallSlots <- struct{}{}:
+			case <-ctx.Done():
+				errs[i] = ctx.Err()
+				return
+			}
+			defer func() { <-relevantCallSlots }()
+			answers[i], errs[i] = extractRelevantContent(ctx, client, chunks[i], contextText, extractRelevantTimeout)
+		}()
+	}
+	wg.Wait()
+
+	var failed []string
+	var first error
+	for i, answer := range answers {
+		if errs[i] != nil {
+			failed = append(failed, strconv.Itoa(i+1))
+			if first == nil {
+				first = errs[i]
+			}
+			continue
+		}
+		if !isNone(answer) {
+			r.parts = append(r.parts, answer)
+		}
+	}
+	switch {
+	case len(failed) == 0:
+	case r.read == 1:
+		// One chunk is the whole input: its error needs no chunk number.
+		r.err = first
+	case len(failed) == 1:
+		r.err = fmt.Errorf("chunk %s of %d failed: %w", failed[0], r.read, first)
+	default:
+		r.err = fmt.Errorf("chunks %s of %d failed (first: %w)", strings.Join(failed, ", "), r.read, first)
+	}
+	return r
+}
+
+// chunkReadLimit is how many bytes of a local file the map pass reads:
+// --max-chunks chunks of maxRelevantPromptBytes. readCapped adds one byte, so
+// a file past the limit is seen to be. Every chunk is shorter than
+// maxRelevantPromptBytes, so a file read to the limit makes more chunks than
+// --max-chunks, and the extra byte, which may end mid-character, is never
+// sent. Saturates instead of overflowing on a huge --max-chunks.
+func chunkReadLimit(maxChunks int) int64 {
+	if int64(maxChunks) >= (math.MaxInt64-1)/maxRelevantPromptBytes {
+		return math.MaxInt64 - 1
+	}
+	return int64(maxChunks) * maxRelevantPromptBytes
+}
+
+// readChunked reads a local file to chunkReadLimit and runs the map pass on it.
+func readChunked(ctx context.Context, client *llmapi.LLMClient, path, contextText string) (chunkedRead, error) {
+	limit := chunkReadLimit(extractRelevantMaxChunks)
+	content, err := readCapped(path, limit)
+	if err != nil {
+		return chunkedRead{}, err
+	}
+	return mapChunks(ctx, client, string(content), contextText, extractRelevantMaxChunks, int64(len(content)) > limit), nil
 }
