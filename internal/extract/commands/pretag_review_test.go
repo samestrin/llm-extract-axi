@@ -149,9 +149,10 @@ func TestExtractRelevantDirectorySkipsCredentialNames(t *testing.T) {
 	}
 }
 
-// Defends EST-8274 item 6: a file over 100 KB and a binary file were skipped
-// with nothing said, so a caller could not tell a file was never read. The
-// result counts each skip by reason, under --json, --min and --plain.
+// Defends EST-8274 item 6: a binary file and a dotfile were skipped with
+// nothing said, so a caller could not tell a file was never read. The result
+// counts each skip by reason, under --json, --min and --plain. Since epic 12 a
+// text file over 100 KB is read in chunks, not skipped as too_large.
 func TestExtractRelevantReportsSkippedCounts(t *testing.T) {
 	countingLLM(t, "NONE")
 	dir := t.TempDir()
@@ -170,18 +171,21 @@ func TestExtractRelevantReportsSkippedCounts(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatal(err)
 	}
-	for reason, n := range map[string]int{"too_large": 1, "not_text": 1, "dotfile": 1} {
+	for reason, n := range map[string]int{"too_large": 0, "not_text": 1, "dotfile": 1} {
 		if got.Skipped[reason] != n {
 			t.Errorf("skipped[%s] = %d, want %d: %v", reason, got.Skipped[reason], n, got.Skipped)
 		}
 	}
+	if got.TotalFiles != 2 {
+		t.Errorf("total_files = %d, want 2: big.txt and a.txt are both read", got.TotalFiles)
+	}
 
 	_, out = runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--min")
-	if !strings.Contains(out, "sk:") || !strings.Contains(out, "too_large: 1") {
+	if !strings.Contains(out, "sk:") || !strings.Contains(out, "not_text: 1") {
 		t.Errorf("--min does not carry the skipped counts:\n%s", out)
 	}
 	_, out = runCLIWithin(t, 20*time.Second, "extract-relevant", "--path", dir, "--context", "x", "--plain")
-	if !strings.Contains(out, "SKIPPED: ") || !strings.Contains(out, "1 too_large") {
+	if !strings.Contains(out, "SKIPPED: ") || !strings.Contains(out, "1 not_text") {
 		t.Errorf("--plain does not say what was skipped:\n%s", out)
 	}
 }

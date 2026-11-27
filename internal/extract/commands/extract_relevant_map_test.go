@@ -3,6 +3,7 @@ package commands
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	goaxi "github.com/samestrin/go-axi"
 )
 
 // mapRecorder stands in for the model endpoint during a map pass. reply gets
@@ -208,8 +211,52 @@ func TestExtractRelevantOverMaxChunksReportsTruncated(t *testing.T) {
 
 	withAXI(t)
 	_, out, _ = runCLI(t, "extract-relevant", "--path", page.URL, "--context", "c", "--max-chunks", "2")
-	if !strings.Contains(out, "help[") || !strings.Contains(out, "--max-chunks") {
-		t.Errorf("help[] does not name --max-chunks:\n%s", out)
+	toon, err := goaxi.Decode(strings.NewReader(out))
+	if err != nil {
+		t.Fatalf("not TOON: %v\n%s", err, out)
+	}
+	help, _ := toon.(map[string]any)["help"].([]any)
+	if !strings.Contains(fmt.Sprint(help...), "--max-chunks") {
+		t.Errorf("help[] does not name --max-chunks: %v", help)
+	}
+}
+
+// Defends the bounds against overflow: a huge --max-chunks must not wrap the
+// read limit or the run deadline negative, which would read nothing or time
+// out at once and report it as the input's fault.
+func TestChunkBoundsSaturate(t *testing.T) {
+	if got := chunkReadLimit(3); got != 3*maxRelevantPromptBytes {
+		t.Errorf("chunkReadLimit(3) = %d", got)
+	}
+	if got := chunkReadLimit(math.MaxInt); got != math.MaxInt64-1 {
+		t.Errorf("chunkReadLimit(MaxInt) = %d, want it saturated", got)
+	}
+	if got := runDeadline(60, 2, 8); got != 16*time.Minute {
+		t.Errorf("runDeadline(60, 2, 8) = %v, want 16m", got)
+	}
+	if got := runDeadline(60, 2, math.MaxInt); got != time.Duration(math.MaxInt64) {
+		t.Errorf("runDeadline with a huge --max-chunks = %v, want it saturated", got)
+	}
+}
+
+// Defends the error wording for one failed chunk of several: it names the
+// chunk and how many were read, and keeps the parts of the others.
+func TestExtractRelevantOneFailedChunkIsNamed(t *testing.T) {
+	doc := paragraphDoc(600) // three chunks
+	chunks := chunksFor(t, doc, "c")
+	marker := chunks[2][strings.LastIndex(chunks[2], "p"):][:7] // the last paragraph, in chunk 3 alone
+	newMapRecorder(t, func(user string) (string, int) {
+		if strings.Contains(user, marker) {
+			return "", http.StatusBadRequest
+		}
+		return "a part", http.StatusOK
+	})
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"doc.md": doc})
+	code, out, _ := runCLI(t, "extract-relevant", "--path", filepath.Join(dir, "doc.md"), "--context", "c", "--json")
+	got := decodeExtractResult(t, out)
+	if code != 1 || !strings.Contains(got.Error, fmt.Sprintf("chunk 3 of %d failed", len(chunks))) || len(got.ExtractedParts) != len(chunks)-1 {
+		t.Errorf("exit %d, error %q, %d parts; want exit 1 naming chunk 3 and the other parts kept", code, got.Error, len(got.ExtractedParts))
 	}
 }
 
