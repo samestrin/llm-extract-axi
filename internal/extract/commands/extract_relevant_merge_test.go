@@ -206,6 +206,11 @@ func TestSchemaChunkedRunMergesAndReportsConflicts(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &short); err != nil || len(short.CF) != 1 || short.CF[0].Property != "price" {
 		t.Errorf("--min cf = %+v (%v), want the price conflict:\n%s", short.CF, err, out)
 	}
+	// kept is the JSON value 3, not a byte array: the minimal renderer once
+	// walked json.RawMessage as []byte and printed [51].
+	if len(short.CF) == 1 && string(short.CF[0].Kept) != "3" {
+		t.Errorf("--min cf kept = %s, want the JSON value 3:\n%s", short.CF[0].Kept, out)
+	}
 	_, out, _ = runCLI(t, "extract-relevant", "--path", file, "--context", "names", "--schema", namesSchema, "--plain")
 	if !strings.Contains(out, "CONFLICT: price: kept 3 (chunk 1); also 4 (chunk 2), 4 (chunk 3)") {
 		t.Errorf("--plain does not list the conflict:\n%s", out)

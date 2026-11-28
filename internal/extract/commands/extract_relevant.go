@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -93,6 +94,13 @@ type ExtractRelevantResult struct {
 	// chunks gave differing values: the value kept and the others.
 	Conflicts []schemaConflict `json:"conflicts,omitempty"`
 	CF        []schemaConflict `json:"cf,omitempty"`
+	// Data is the one validated --schema answer, as the JSON value it is:
+	// TOON and --json carry it beside model_calls and bytes_sent, and
+	// --plain prints it. It is set only on a successful --schema run; a
+	// failed run's answer is invalid_output, never data. ExtractedParts
+	// still carries the answer as text.
+	Data json.RawMessage `json:"data,omitempty"`
+	D    json.RawMessage `json:"d,omitempty"`
 	// Help is next steps, set only under --axi; --json never carries it.
 	Help []string `json:"help,omitempty"`
 
@@ -326,6 +334,11 @@ func runExtractRelevant(cmd *cobra.Command, args []string) error {
 		// A skipped reduce leaves parts, so it never meets the empty message.
 		if len(result.reduceNotes) > 0 {
 			result.Message = strings.Join(result.reduceNotes, "; ")
+		}
+		// A successful --schema run has one part, the validated answer (a
+		// chunked input's merge is validated again). It is the run's data.
+		if relevantSchema != nil && len(result.ExtractedParts) == 1 {
+			result.Data = json.RawMessage(result.ExtractedParts[0])
 		}
 	}
 
@@ -1022,6 +1035,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			SK:   result.Skipped,
 			IO:   result.InvalidOutput,
 			CF:   result.Conflicts,
+			D:    result.Data,
 			Help: result.Help,
 		}
 	} else {
@@ -1063,6 +1077,7 @@ func outputExtractResult(cmd *cobra.Command, result ExtractRelevantResult) error
 			}
 			ack := finalResult
 			ack.ExtractedParts, ack.EP = nil, nil
+			ack.Data, ack.D = nil, nil
 			formatter := output.New(extractRelevantJSON, extractRelevantMinimal, cmd.OutOrStdout())
 			return formatter.Print(ack, nil)
 		}
@@ -1114,6 +1129,12 @@ func extractRelevantHelp(result ExtractRelevantResult) []string {
 // run follows them, so text mode loses nothing --json carries.
 func plainExtractResult(result ExtractRelevantResult) string {
 	parts := strings.Join(result.ExtractedParts, "\n\n---\n\n")
+	// Under --schema the payload is the one validated JSON value: print the
+	// JSON, not passages joined as prose. The lead lines below still carry
+	// an error, a truncation or a conflict, so text mode hides nothing.
+	if result.Data != nil {
+		parts = string(result.Data)
+	}
 	var lead string
 	if result.Error != "" {
 		lead = fmt.Sprintf("ERROR: %s\n", result.Error)
