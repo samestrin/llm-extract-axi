@@ -177,11 +177,28 @@ bound are not read; the result says so in a truncated note, and
 model_calls counts the requests sent, failed ones and retries included. Raise --max-chunks to
 read more of a large input; each extra chunk costs one more model call.
 
+--schema asks for one JSON value that follows a JSON Schema instead of
+passages. The value is the schema itself when, trimmed, it starts with {,
+and the path of a file holding one otherwise. The schema is checked before
+any model call: invalid JSON, a root that is not an object, a $ref that is
+not local ("#..."), a schema the validator cannot use, and --schema with a
+directory --path are usage errors (exit 2). Each request sends the schema
+with response_format json_schema and in the prompt; an endpoint that
+answers 400 is sent the request once more without response_format, and
+only that second request counts in model_calls. An answer that does not
+validate is asked for once more with the errors in the prompt; one still
+invalid fails the run (exit 1), its raw answer in invalid_output, never as
+data. The chunks of one input merge in code, per top-level property, and a
+later differing value is listed in conflicts.
+
 Examples:
   # Local files and directories
   llm-extract extract-relevant --path ./src --context "API endpoint definitions"
   llm-extract extract-relevant --path ./docs --context "Configuration options" --concurrency 4
   llm-extract extract-relevant --path ./file.md --context "Code examples" -o output.md
+
+  # JSON that follows a schema (inline here, or a file path)
+  llm-extract extract-relevant --path ./product.md --context "price and release date" --schema ./product.schema.json
 
   # URLs (HTML automatically stripped)
   llm-extract extract-relevant --path https://example.com/docs --context "Installation steps"
