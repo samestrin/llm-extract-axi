@@ -462,3 +462,60 @@ func TestChangelogRecordsEveryEpicFix(t *testing.T) {
 		}
 	}
 }
+
+// TestDocsDescribeSchema defends epic 13's docs truth (T6): --schema is
+// documented where a reader meets it — README.md, docs/output.md, the Agent
+// Skill and --help — and no doc calls an invalid answer data. The probes run
+// first, so the docs fail only while the code holds the contract stated: a
+// validated answer is data, an answer still invalid after the retry is exit 1
+// with invalid_output and no data, and a schema whose root is not an object is
+// exit 2. A doc that stays silent about --schema cannot pass.
+func TestDocsDescribeSchema(t *testing.T) {
+	path := writeTemp(t, "price.md", "the price is 42")
+	m := newSchemaModel(t, `{"price": 42}`)
+
+	code, out, _ := runCLI(t, "extract-relevant", "--path", path, "--context", "the price", "--schema", priceSchema, "--json")
+	var r ExtractRelevantResult
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("a --schema run did not print JSON: %v\n%s", err, out)
+	}
+	if code != 0 || len(r.Data) == 0 {
+		t.Fatalf("a validated --schema answer is not carried as data; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+
+	m.mu.Lock()
+	m.answer = "the price is 42"
+	m.mu.Unlock()
+	code, out, _ = runCLI(t, "extract-relevant", "--path", path, "--context", "the price", "--schema", priceSchema, "--json")
+	r = ExtractRelevantResult{}
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("a failed --schema run did not print JSON: %v\n%s", err, out)
+	}
+	if code != 1 || r.InvalidOutput == "" || len(r.Data) != 0 {
+		t.Fatalf("an answer invalid after one retry is not exit 1 with invalid_output and no data; the probe, not the docs, is wrong (exit %d):\n%s", code, out)
+	}
+
+	arraySchema := writeTemp(t, "array.schema.json", `[1, 2]`)
+	if code, out, _ := runCLI(t, "extract-relevant", "--path", path, "--context", "c", "--schema", arraySchema); code != 2 {
+		t.Fatalf("a schema whose root is an array is not a usage error (exit %d); the probe, not the docs, is wrong:\n%s", code, out)
+	}
+
+	for _, doc := range []string{"README.md", "docs/output.md", "integrations/claude-code/skill/SKILL.md"} {
+		s := readRepoFile(t, doc)
+		for _, want := range []string{"--schema", "invalid_output", "`data`"} {
+			if !strings.Contains(s, want) {
+				t.Errorf("%s does not name %s, so a reader cannot learn what --schema returns or how it fails", doc, want)
+			}
+		}
+	}
+
+	var help, helpErr bytes.Buffer
+	if code := run([]string{"extract-relevant", "--help"}, &help, &helpErr); code != 0 {
+		t.Fatalf("extract-relevant --help exited %d: %s", code, helpErr.String())
+	}
+	for _, want := range []string{"--schema", "response_format"} {
+		if !strings.Contains(help.String(), want) {
+			t.Errorf("extract-relevant --help does not name %s, so a caller cannot learn the flag from it", want)
+		}
+	}
+}

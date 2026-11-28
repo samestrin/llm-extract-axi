@@ -128,13 +128,22 @@ llm-extract extract-links --url https://go.dev/doc/
 llm-extract extract-relevant --path https://go.dev/doc/install --context "installation steps"
 ```
 
+Ask for JSON that follows a schema instead of prose:
+
+```bash
+llm-extract extract-relevant --path ./product.md --context "price and release date" \
+  --schema '{"type":"object","properties":{"price":{"type":"number"},"released":{"type":"string"}},"required":["price"]}'
+```
+
+`--schema` also takes the path of a file holding the schema (`--schema ./product.schema.json`). The validated answer is `data` in TOON and `--json`; `--plain` prints that JSON. See [Structured extraction](#structured-extraction) below.
+
 ## Usage
 
 | Command | What it does |
 | --- | --- |
 | `llm-extract fetch <url>` | Download a URL with a direct HTTP GET; print a TOON envelope with the first 4096 bytes of the body, or with `--format markdown` the main content of an HTML page as Markdown |
 | `llm-extract extract-links --url <url>` | Extract a page's links, ranked, each with text, score and section |
-| `llm-extract extract-relevant --path <path> --context <text>` | Pull the parts of files, a directory or a URL relevant to the context, using a model |
+| `llm-extract extract-relevant --path <path> --context <text>` | Pull the parts of files, a directory or a URL relevant to the context, using a model; `--schema` returns validated JSON instead |
 | `llm-extract setup` | Register llm-extract with Claude Code, Codex and OpenCode in a project; `--target` picks the agents |
 
 Running `llm-extract` with no arguments prints the reach table below, the path of the binary, a one-line description and the configuration a run would use (whether an API key is set, the model, the base URL, the fetch size cap). It makes no network or model call.
@@ -151,6 +160,23 @@ llm-extract extract-relevant --path ./big.md --context "error handling" --max-ch
 ```
 
 Every command takes `--help`. Output is TOON (the AXI token-dense format) by default on the home view, `fetch`, `extract-links`, `extract-relevant` and `setup`, with a `help[]` list of next steps (`fetch` carries one when its body is cut or not text, and a failed fetch carries one too). The global `--plain` flag prints human-readable text instead (`--axi=false` is the same); `--axi` is still accepted and selects the default. `--plain` with `--json` is a usage error (exit 2). A successful `fetch` prints a TOON envelope around the body's first 4096 bytes (`--head N` sets the cut, `--full` the whole body, `--plain` body bytes alone, `--output <file>` saves the whole body to a file and under `--plain` prints `Saved <n> bytes [HTTP <status> via <tier>, <format>] -> <file>` instead of the body). With `--format markdown` the body is the page's main content as Markdown, so `bytes`, `truncated`, `--head`, `--output` and `--plain` all describe the Markdown, and `source_bytes`, `title` and `byline` describe the fetched page. `completion` stays prose.
+
+### Structured extraction
+
+Add `--schema` to `extract-relevant` to get one JSON value that validates against a JSON Schema instead of prose:
+
+```bash
+# Inline schema
+llm-extract extract-relevant --path ./product.md --context "price and release date" \
+  --schema '{"type":"object","properties":{"price":{"type":"number"},"released":{"type":"string"}},"required":["price"]}'
+
+# Or a schema file
+llm-extract extract-relevant --path ./product.md --context "price and release date" --schema ./product.schema.json
+```
+
+The value is the schema itself when, trimmed, it starts with `{`, and the path of a file holding one otherwise. The schema is checked before any model call: a value that is not JSON, a root that is not an object, a `$ref` that is not local (`#...`), a schema the validator cannot use (draft 2020-12 only), or `--schema` with a directory `--path` is a usage error (exit 2). Each request sends the schema with `response_format: json_schema` and in the prompt; an endpoint that answers 400 is sent the request once more without `response_format`, and only that second request counts in `model_calls`.
+
+The validated answer is `data` in TOON and `--json` (`d` in `--min`), and `--plain` prints that JSON. An answer that does not validate is asked for once more with the validation errors in the prompt; one still invalid after that retry fails the run (exit 1) with the errors in `error` and the raw answer in `invalid_output` (`io` in `--min`), never as `data`. For a chunked input the chunks' answers are merged in code, per top-level property — arrays joined in chunk order, any other value the first non-null — and a later value that differs is listed in `conflicts` (`cf` in `--min`); the merged answer is validated again, and one that no longer validates fails the run. Validation is draft 2020-12 with `github.com/google/jsonschema-go`.
 
 ## Configuration
 
@@ -178,7 +204,7 @@ Output modes: TOON by default, `--plain` for human-readable text, `--json` for s
 | --- | --- |
 | 0 | Success |
 | 1 | The command ran and failed (a failed fetch or model call, a `--format markdown` page that is not HTML or has no main content, or a partial result) |
-| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a missing `extract-relevant --path`, a rejected flag value such as `fetch --format text`, `fetch --head 0`, `--max-bytes 0`, `--timeout 0`, `--head` with `--full` or with `--output`, `--full` with `--output`, an `extract-relevant -o` path that cannot be written, a `setup --dir` that is missing or is home, `--fields` with `--plain` or an unknown `--fields` name, or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context`; [docs/output.md](docs/output.md#exit-codes) has the full list |
+| 2 | The invocation itself is malformed (an unknown command or flag, a flag missing its argument, a missing `extract-relevant --path`, a rejected flag value such as `fetch --format text`, `fetch --head 0`, `--max-bytes 0`, `--timeout 0`, `--head` with `--full` or with `--output`, `--full` with `--output`, an `extract-relevant -o` path that cannot be written, an unusable `--schema` (not JSON, a non-object root, a non-local `$ref`, another draft) or `--schema` with a directory `--path`, a `setup --dir` that is missing or is home, `--fields` with `--plain` or an unknown `--fields` name, or a URL that is not http or https, the wrong number of arguments such as `fetch` with no URL, `completion` with no shell or an unknown one, `--plain` with `--json`), or the model-key configuration is unusable (no API key, or an `ANTHROPIC_API_KEY` with no `OPENAI_BASE_URL`) in `extract-relevant` or `extract-links --context`; [docs/output.md](docs/output.md#exit-codes) has the full list |
 
 See [docs/output.md](docs/output.md) for the full behavior: partial results, how errors are printed on stdout in each format, and what `llm-extract-mcp` does with a failed run.
 
@@ -223,6 +249,7 @@ See [VISION.md](VISION.md) for what the tool is for and what it is not.
 - A successful `fetch` prints a TOON envelope: `bytes` (the whole-body size), `truncated`, and the body's first 4096 bytes, cut on a character boundary. Under `--format markdown`, `body` is the page's main content as Markdown; `bytes` and `truncated` describe the Markdown, `source_bytes` is the fetched HTML's size, and `title` and `byline` come from the page. `--head N` sets the cut, `--full` prints the whole body, `--plain` prints body bytes alone (a cut puts a one-line size hint on stderr; with `--output` it prints the `Saved <n> bytes ...` line instead), `--json` prints the same capped document as JSON, `--fields` selects envelope fields, and `--output <file>` saves the whole body to a file. A body that is not UTF-8 text (an image, a PDF) is never printed: `body` is empty, `truncated` is true, and `help[]` points to `--output`. A failed `fetch` prints its error on stdout in the active format, so `fetch URL > file` can hold an error document after a failure — check the exit status.
 - `help[]` next steps appear by default (TOON) on the home view, on `fetch` when the body is cut or not text and on a failed fetch, on `setup`, and on `extract-links` and `extract-relevant` results and errors; `--json` output carries no `help[]` and `--plain` is prose.
 - An `extract-relevant` directory run skips dotfiles and dot directories (`.env`, `.npmrc`, `.aws/`), `*.env` files, and files named like credentials — `credentials*`, `secret*`, `*token*`, `*.key`, `*.pem`, and service-account files (`*service-account*`, `*service_account*`, `*serviceaccount*`), case ignored — so secrets are not sent to a model; name one as `--path` to read it. `--path` has no default. It reads only regular files whose real path is inside `--path`: a symlink out of it, a FIFO or a device is skipped. A hard link inside `--path` to a file outside it is read: it is the same file under a second name, and no path check can detect it. A FIFO or device named as `--path` is an error, and so is one named by `-o`. The rules go by file name: every other file's contents are sent as they are (a token pasted into `notes.txt` is sent), and `.gitignore` is not read. The result counts every skipped file by reason in `skipped`.
+- `extract-relevant --schema` asks for JSON instead of passages. The schema is inline when the value starts with `{`, else a file path. It is checked before any model call, and a value that is not JSON, a root that is not an object, a `$ref` that is not local, another `$schema` draft, or `--schema` with a directory `--path` is a usage error (exit 2); a schema too large to share one prompt with content is refused too. An answer still invalid after one retry fails the run (exit 1) with `invalid_output`, never data. For a chunked input the answers merge in code and differing values are reported in `conflicts` rather than chosen silently.
 - `setup` registers Claude Code, Codex and OpenCode; there is no session-end hook, because the tool keeps no session state.
 - The AXI exceptions behind these limits, with their reasons, are recorded in [docs/axi-audit.md](docs/axi-audit.md).
 
